@@ -1,0 +1,5030 @@
+﻿--- PROJECT CONTEXT FOR GOOGLE AI STUDIO ---
+ 
+==========================================
+FILE: \.snapshots\config.json
+==========================================
+{
+    "excluded_patterns": [
+        ".git",
+        ".gitignore",
+        "gradle",
+        "gradlew",
+        "gradlew.*",
+        "node_modules",
+        ".snapshots",
+        ".idea",
+        ".vscode",
+        "*.log",
+        "*.tmp",
+        "target",
+        "dist",
+        "build",
+        ".DS_Store",
+        "*.bak",
+        "*.swp",
+        "*.swo",
+        "*.lock",
+        "*.iml",
+        "coverage",
+        "*.min.js",
+        "*.min.css",
+        "__pycache__",
+        ".marketing",
+        ".env",
+        ".env.*",
+        "*.jpg",
+        "*.jpeg",
+        "*.png",
+        "*.gif",
+        "*.bmp",
+        "*.tiff",
+        "*.ico",
+        "*.svg",
+        "*.webp",
+        "*.psd",
+        "*.ai",
+        "*.eps",
+        "*.indd",
+        "*.raw",
+        "*.cr2",
+        "*.nef",
+        "*.mp4",
+        "*.mov",
+        "*.avi",
+        "*.wmv",
+        "*.flv",
+        "*.mkv",
+        "*.webm",
+        "*.m4v",
+        "*.wfp",
+        "*.prproj",
+        "*.aep",
+        "*.psb",
+        "*.xcf",
+        "*.sketch",
+        "*.fig",
+        "*.xd",
+        "*.db",
+        "*.sqlite",
+        "*.sqlite3",
+        "*.mdb",
+        "*.accdb",
+        "*.frm",
+        "*.myd",
+        "*.myi",
+        "*.ibd",
+        "*.dbf",
+        "*.rdb",
+        "*.aof",
+        "*.pdb",
+        "*.sdb",
+        "*.s3db",
+        "*.ddb",
+        "*.db-shm",
+        "*.db-wal",
+        "*.sqlitedb",
+        "*.sql.gz",
+        "*.bak.sql",
+        "dump.sql",
+        "dump.rdb",
+        "*.vsix",
+        "*.jar",
+        "*.war",
+        "*.ear",
+        "*.zip",
+        "*.tar",
+        "*.tar.gz",
+        "*.tgz",
+        "*.rar",
+        "*.7z",
+        "*.exe",
+        "*.dll",
+        "*.so",
+        "*.dylib",
+        "*.app",
+        "*.dmg",
+        "*.iso",
+        "*.msi",
+        "*.deb",
+        "*.rpm",
+        "*.apk",
+        "*.aab",
+        "*.ipa",
+        "*.pkg",
+        "*.nupkg",
+        "*.snap",
+        "*.whl",
+        "*.gem",
+        "*.pyc",
+        "*.pyo",
+        "*.pyd",
+        "*.class",
+        "*.o",
+        "*.obj",
+        "*.lib",
+        "*.a",
+        "*.map",
+        ".npmrc"
+    ],
+    "default": {
+        "default_prompt": "Enter your prompt here",
+        "default_include_all_files": false,
+        "default_include_entire_project_structure": true
+    },
+    "included_patterns": [
+        "build.gradle",
+        "settings.gradle",
+        "gradle.properties",
+        "pom.xml",
+        "Makefile",
+        "CMakeLists.txt",
+        "package.json",
+        "requirements.txt",
+        "Pipfile",
+        "Gemfile",
+        "composer.json",
+        ".editorconfig",
+        ".eslintrc.json",
+        ".eslintrc.js",
+        ".prettierrc",
+        ".babelrc",
+        ".dockerignore",
+        ".gitattributes",
+        ".stylelintrc",
+        ".npmrc"
+    ]
+}
+ 
+==========================================
+FILE: \src\components\DualColumnBible.tsx
+==========================================
+import React, { useState, useRef, useCallback } from 'react';
+import {
+  View,
+  Text,
+  ScrollView,
+  StyleSheet,
+  TouchableOpacity,
+  Dimensions,
+  NativeSyntheticEvent,
+  NativeScrollEvent,
+  Modal,
+  ActivityIndicator,
+} from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
+import { SpeakerIcon } from './SpeakerIcon';
+import { BibleVerse } from '../types';
+import { useVoice } from '../context/VoiceContext';
+
+interface DualColumnBibleProps {
+  verses: BibleVerse[];
+  reference: string;
+  showPerVerseSpeakers?: boolean;
+  onWordPress?: (word: string, verse: BibleVerse) => void;
+  highlights?: Map<number, string>; // verse number -> color
+}
+
+interface LexiconEntry {
+  word: string;
+  transliteration: string;
+  strongsNumber: string;
+  definition: string;
+  partOfSpeech: string;
+}
+
+export function DualColumnBible({ 
+  verses, 
+  reference, 
+  showPerVerseSpeakers = true,
+  onWordPress,
+  highlights = new Map(),
+}: DualColumnBibleProps) {
+  const [selectedVerse, setSelectedVerse] = useState<number | null>(null);
+  const [showLexicon, setShowLexicon] = useState(false);
+  const [lexiconLoading, setLexiconLoading] = useState(false);
+  const [lexiconEntry, setLexiconEntry] = useState<LexiconEntry | null>(null);
+  const [selectedWord, setSelectedWord] = useState<string>('');
+  const { textSize } = useVoice();
+  
+  // Refs for synchronized scrolling
+  const originalScrollRef = useRef<ScrollView>(null);
+  const englishScrollRef = useRef<ScrollView>(null);
+  const isScrollingOriginal = useRef(false);
+  const isScrollingEnglish = useRef(false);
+
+  // Calculate column width
+  const screenWidth = Dimensions.get('window').width;
+  const containerPadding = 24; // 12px on each side
+  const dividerWidth = 17; // 1px + 8px margin each side
+  const columnWidth = (screenWidth - containerPadding - dividerWidth) / 2;
+
+  const getAllOriginalText = () => verses.map(v => v.originalText).join(' ');
+  const getAllEnglishText = () => verses.map(v => v.englishText).join(' ');
+
+  // Synchronized scrolling handlers
+  const handleOriginalScroll = useCallback((event: NativeSyntheticEvent<NativeScrollEvent>) => {
+    if (isScrollingEnglish.current) return;
+    
+    isScrollingOriginal.current = true;
+    const offsetY = event.nativeEvent.contentOffset.y;
+    
+    englishScrollRef.current?.scrollTo({ y: offsetY, animated: false });
+    
+    // Reset flag after a short delay
+    setTimeout(() => {
+      isScrollingOriginal.current = false;
+    }, 50);
+  }, []);
+
+  const handleEnglishScroll = useCallback((event: NativeSyntheticEvent<NativeScrollEvent>) => {
+    if (isScrollingOriginal.current) return;
+    
+    isScrollingEnglish.current = true;
+    const offsetY = event.nativeEvent.contentOffset.y;
+    
+    originalScrollRef.current?.scrollTo({ y: offsetY, animated: false });
+    
+    setTimeout(() => {
+      isScrollingEnglish.current = false;
+    }, 50);
+  }, []);
+
+  // Handle word tap for lexicon lookup
+  const handleWordPress = async (word: string, verse: BibleVerse) => {
+    setSelectedWord(word);
+    setShowLexicon(true);
+    setLexiconLoading(true);
+    
+    // Simulate lexicon lookup (in real app, call API)
+    setTimeout(() => {
+      setLexiconEntry({
+        word: word,
+        transliteration: verse.transliteration || 'N/A',
+        strongsNumber: verse.strongsNumbers?.[0] || 'N/A',
+        definition: `Definition for "${word}" - This would come from a lexicon API like STEP Bible or Blue Letter Bible.`,
+        partOfSpeech: 'noun/verb/adj',
+      });
+      setLexiconLoading(false);
+    }, 500);
+    
+    onWordPress?.(word, verse);
+  };
+
+  // Render original text with word-level interaction
+  const renderOriginalText = (verse: BibleVerse) => {
+    const words = verse.originalText.split(' ');
+    
+    return (
+      <Text style={[styles.originalText, { fontSize: textSize }]}>
+        {words.map((word, idx) => (
+          <Text
+            key={idx}
+            onPress={() => handleWordPress(word, verse)}
+            style={styles.tappableWord}
+          >
+            {word}{idx < words.length - 1 ? ' ' : ''}
+          </Text>
+        ))}
+      </Text>
+    );
+  };
+
+  const getHighlightStyle = (verseNumber: number) => {
+    const color = highlights.get(verseNumber);
+    if (!color) return {};
+    return { backgroundColor: color + '40' }; // Add transparency
+  };
+
+  return (
+    <View style={styles.container}>
+      {/* Header */}
+      <View style={styles.header}>
+        <Text style={[styles.reference, { fontSize: textSize }]}>{reference}</Text>
+        <SpeakerIcon text={`${reference}. ${getAllEnglishText()}`} />
+      </View>
+
+      {/* Dual Columns */}
+      <View style={styles.columnsContainer}>
+        {/* Original Language Column */}
+        <View style={[styles.column, { width: columnWidth }]}>
+          <View style={styles.columnHeader}>
+            <Text style={styles.columnTitle}>Original</Text>
+            <SpeakerIcon text={getAllOriginalText()} size={16} />
+          </View>
+          <ScrollView 
+            ref={originalScrollRef}
+            onScroll={handleOriginalScroll}
+            scrollEventThrottle={16}
+            showsVerticalScrollIndicator={false}
+          >
+            {verses.map((verse) => (
+              <TouchableOpacity
+                key={verse.number}
+                onPress={() => setSelectedVerse(verse.number)}
+                style={[
+                  styles.verseRow,
+                  selectedVerse === verse.number && styles.selectedVerse,
+                  getHighlightStyle(verse.number),
+                ]}
+              >
+                <Text style={[styles.verseNumber, { fontSize: textSize - 2 }]}>
+                  {verse.number}
+                </Text>
+                {renderOriginalText(verse)}
+                {showPerVerseSpeakers && (
+                  <SpeakerIcon text={verse.originalText} size={14} />
+                )}
+              </TouchableOpacity>
+            ))}
+          </ScrollView>
+        </View>
+
+        {/* Divider */}
+        <View style={styles.divider} />
+
+        {/* English Column */}
+        <View style={[styles.column, { width: columnWidth }]}>
+          <View style={styles.columnHeader}>
+            <Text style={styles.columnTitle}>English</Text>
+            <SpeakerIcon text={getAllEnglishText()} size={16} />
+          </View>
+          <ScrollView 
+            ref={englishScrollRef}
+            onScroll={handleEnglishScroll}
+            scrollEventThrottle={16}
+            showsVerticalScrollIndicator={false}
+          >
+            {verses.map((verse) => (
+              <TouchableOpacity
+                key={verse.number}
+                onPress={() => setSelectedVerse(verse.number)}
+                style={[
+                  styles.verseRow,
+                  selectedVerse === verse.number && styles.selectedVerse,
+                  getHighlightStyle(verse.number),
+                ]}
+              >
+                <Text style={[styles.verseNumber, { fontSize: textSize - 2 }]}>
+                  {verse.number}
+                </Text>
+                <Text style={[styles.englishText, { fontSize: textSize }]}>
+                  {verse.englishText}
+                </Text>
+                {showPerVerseSpeakers && (
+                  <SpeakerIcon text={verse.englishText} size={14} />
+                )}
+              </TouchableOpacity>
+            ))}
+          </ScrollView>
+        </View>
+      </View>
+
+      {/* Lexicon Modal */}
+      <Modal visible={showLexicon} transparent animationType="slide">
+        <View style={styles.lexiconOverlay}>
+          <View style={styles.lexiconContent}>
+            <View style={styles.lexiconHeader}>
+              <View style={styles.lexiconTitleRow}>
+                <Text style={styles.lexiconTitle}>Word Study</Text>
+                <SpeakerIcon 
+                  text={lexiconEntry ? `${lexiconEntry.word}. ${lexiconEntry.definition}` : ''} 
+                  size={18} 
+                />
+              </View>
+              <TouchableOpacity onPress={() => setShowLexicon(false)}>
+                <Ionicons name="close" size={24} color="#2D1810" />
+              </TouchableOpacity>
+            </View>
+            
+            {lexiconLoading ? (
+              <View style={styles.lexiconLoading}>
+                <ActivityIndicator size="large" color="#6B4EFF" />
+                <Text style={styles.loadingText}>Looking up "{selectedWord}"...</Text>
+              </View>
+            ) : lexiconEntry ? (
+              <View style={styles.lexiconBody}>
+                <View style={styles.lexiconWordRow}>
+                  <Text style={styles.lexiconWord}>{lexiconEntry.word}</Text>
+                  <Text style={styles.lexiconTranslit}>{lexiconEntry.transliteration}</Text>
+                </View>
+                
+                <View style={styles.lexiconMeta}>
+                  <View style={styles.metaItem}>
+                    <Text style={styles.metaLabel}>Strong's</Text>
+                    <Text style={styles.metaValue}>{lexiconEntry.strongsNumber}</Text>
+                  </View>
+                  <View style={styles.metaItem}>
+                    <Text style={styles.metaLabel}>Part of Speech</Text>
+                    <Text style={styles.metaValue}>{lexiconEntry.partOfSpeech}</Text>
+                  </View>
+                </View>
+                
+                <View style={styles.definitionBox}>
+                  <Text style={styles.definitionLabel}>Definition</Text>
+                  <Text style={styles.definitionText}>{lexiconEntry.definition}</Text>
+                  <SpeakerIcon text={lexiconEntry.definition} size={16} />
+                </View>
+              </View>
+            ) : null}
+          </View>
+        </View>
+      </Modal>
+    </View>
+  );
+}
+
+const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+    backgroundColor: '#FDF8F3',
+    borderRadius: 12,
+    padding: 12,
+  },
+  header: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 12,
+    paddingBottom: 8,
+    borderBottomWidth: 1,
+    borderBottomColor: '#E8DDD4',
+  },
+  reference: {
+    fontFamily: 'serif',
+    fontWeight: '600',
+    color: '#2D1810',
+  },
+  columnsContainer: {
+    flex: 1,
+    flexDirection: 'row',
+  },
+  column: {
+    flex: 1,
+  },
+  columnHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  columnTitle: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#8B7355',
+    textTransform: 'uppercase',
+    letterSpacing: 1,
+  },
+  divider: {
+    width: 1,
+    backgroundColor: '#E8DDD4',
+    marginHorizontal: 8,
+  },
+  verseRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    paddingVertical: 8,
+    paddingHorizontal: 4,
+    borderRadius: 6,
+  },
+  selectedVerse: {
+    backgroundColor: '#F0E6D8',
+  },
+  verseNumber: {
+    color: '#B8A080',
+    fontWeight: '600',
+    marginRight: 6,
+    minWidth: 20,
+  },
+  originalText: {
+    flex: 1,
+    color: '#2D1810',
+    fontFamily: 'serif',
+    lineHeight: 24,
+  },
+  englishText: {
+    flex: 1,
+    color: '#2D1810',
+    lineHeight: 24,
+  },
+  tappableWord: {
+    // Words are tappable for lexicon lookup
+  },
+  // Lexicon Modal Styles
+  lexiconOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    justifyContent: 'flex-end',
+  },
+  lexiconContent: {
+    backgroundColor: '#FFFFFF',
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    padding: 20,
+    maxHeight: '60%',
+  },
+  lexiconHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 20,
+  },
+  lexiconTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  lexiconTitle: {
+    fontSize: 20,
+    fontFamily: 'serif',
+    fontWeight: '600',
+    color: '#2D1810',
+    marginRight: 8,
+  },
+  lexiconLoading: {
+    alignItems: 'center',
+    padding: 40,
+  },
+  loadingText: {
+    marginTop: 12,
+    color: '#5C4A3D',
+    fontSize: 16,
+  },
+  lexiconBody: {
+    gap: 16,
+  },
+  lexiconWordRow: {
+    flexDirection: 'row',
+    alignItems: 'baseline',
+    gap: 12,
+  },
+  lexiconWord: {
+    fontSize: 32,
+    fontFamily: 'serif',
+    color: '#2D1810',
+  },
+  lexiconTranslit: {
+    fontSize: 18,
+    color: '#6B4EFF',
+    fontStyle: 'italic',
+  },
+  lexiconMeta: {
+    flexDirection: 'row',
+    gap: 24,
+  },
+  metaItem: {
+    flex: 1,
+  },
+  metaLabel: {
+    fontSize: 12,
+    color: '#8B7355',
+    textTransform: 'uppercase',
+    letterSpacing: 1,
+    marginBottom: 4,
+  },
+  metaValue: {
+    fontSize: 16,
+    color: '#2D1810',
+    fontWeight: '500',
+  },
+  definitionBox: {
+    backgroundColor: '#F5F0EA',
+    borderRadius: 12,
+    padding: 16,
+  },
+  definitionLabel: {
+    fontSize: 12,
+    color: '#8B7355',
+    textTransform: 'uppercase',
+    letterSpacing: 1,
+    marginBottom: 8,
+  },
+  definitionText: {
+    fontSize: 16,
+    color: '#2D1810',
+    lineHeight: 24,
+    marginBottom: 8,
+  },
+});
+ 
+==========================================
+FILE: \src\components\SpeakerIcon.tsx
+==========================================
+import React, { useState } from 'react';
+import { TouchableOpacity, StyleSheet, ActivityIndicator } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
+import { voiceService } from '../services/voiceService';
+import { useVoice } from '../context/VoiceContext';
+
+interface SpeakerIconProps {
+  text: string;
+  size?: number;
+  color?: string;
+  style?: object;
+}
+
+export function SpeakerIcon({ text, size = 20, color = '#6B4EFF', style }: SpeakerIconProps) {
+  const [isSpeaking, setIsSpeaking] = useState(false);
+  const { selectedVoice } = useVoice();
+
+  const handlePress = async () => {
+    if (isSpeaking) {
+      await voiceService.stop();
+      setIsSpeaking(false);
+    } else {
+      setIsSpeaking(true);
+      try {
+        await voiceService.speak(text, selectedVoice);
+      } finally {
+        setIsSpeaking(false);
+      }
+    }
+  };
+
+  return (
+    <TouchableOpacity
+      onPress={handlePress}
+      style={[styles.container, style]}
+      accessibilityLabel={isSpeaking ? 'Stop reading' : 'Read aloud'}
+      accessibilityRole="button"
+    >
+      {isSpeaking ? (
+        <ActivityIndicator size="small" color={color} />
+      ) : (
+        <Ionicons name="volume-high" size={size} color={color} />
+      )}
+    </TouchableOpacity>
+  );
+}
+
+const styles = StyleSheet.create({
+  container: {
+    padding: 4,
+    marginLeft: 8,
+  },
+});
+
+ 
+==========================================
+FILE: \src\context\VoiceContext.tsx
+==========================================
+import React, { createContext, useContext, useState, ReactNode } from 'react';
+import { VoiceProfile } from '../types';
+
+interface VoiceContextType {
+  selectedVoice: VoiceProfile;
+  setSelectedVoice: (voice: VoiceProfile) => void;
+  voices: VoiceProfile[];
+  addVoice: (voice: VoiceProfile) => void;
+  removeVoice: (id: string) => void;
+  audioFirstMode: boolean;
+  setAudioFirstMode: (enabled: boolean) => void;
+  textSize: number;
+  setTextSize: (size: number) => void;
+  highContrast: boolean;
+  setHighContrast: (enabled: boolean) => void;
+}
+
+const defaultNarrators: VoiceProfile[] = [
+  { id: 'narrator-1', name: 'David', description: 'Calm, warm male voice', type: 'narrator' },
+  { id: 'narrator-2', name: 'Sarah', description: 'Clear, gentle female voice', type: 'narrator' },
+  { id: 'narrator-3', name: 'Michael', description: 'Deep, authoritative male voice', type: 'narrator' },
+  { id: 'narrator-4', name: 'Grace', description: 'Soft, soothing female voice', type: 'narrator' },
+];
+
+const VoiceContext = createContext<VoiceContextType | undefined>(undefined);
+
+export function VoiceProvider({ children }: { children: ReactNode }) {
+  const [selectedVoice, setSelectedVoice] = useState<VoiceProfile>(defaultNarrators[0]);
+  const [voices, setVoices] = useState<VoiceProfile[]>(defaultNarrators);
+  const [audioFirstMode, setAudioFirstMode] = useState(false);
+  const [textSize, setTextSize] = useState(16);
+  const [highContrast, setHighContrast] = useState(false);
+
+  const addVoice = (voice: VoiceProfile) => {
+    setVoices(prev => [...prev, voice]);
+  };
+
+  const removeVoice = (id: string) => {
+    setVoices(prev => prev.filter(v => v.id !== id));
+    if (selectedVoice.id === id) {
+      setSelectedVoice(defaultNarrators[0]);
+    }
+  };
+
+  return (
+    <VoiceContext.Provider value={{
+      selectedVoice,
+      setSelectedVoice,
+      voices,
+      addVoice,
+      removeVoice,
+      audioFirstMode,
+      setAudioFirstMode,
+      textSize,
+      setTextSize,
+      highContrast,
+      setHighContrast,
+    }}>
+      {children}
+    </VoiceContext.Provider>
+  );
+}
+
+export function useVoice() {
+  const context = useContext(VoiceContext);
+  if (!context) {
+    throw new Error('useVoice must be used within VoiceProvider');
+  }
+  return context;
+}
+
+ 
+==========================================
+FILE: \src\data\bibleBooks.ts
+==========================================
+export interface BibleBook {
+  name: string;
+  abbrev: string;
+  chapters: number;
+  testament: 'OT' | 'NT';
+  originalLanguage: 'hebrew' | 'greek' | 'aramaic';
+}
+
+export const BIBLE_BOOKS: BibleBook[] = [
+  // Old Testament
+  { name: 'Genesis', abbrev: 'GEN', chapters: 50, testament: 'OT', originalLanguage: 'hebrew' },
+  { name: 'Exodus', abbrev: 'EXO', chapters: 40, testament: 'OT', originalLanguage: 'hebrew' },
+  { name: 'Leviticus', abbrev: 'LEV', chapters: 27, testament: 'OT', originalLanguage: 'hebrew' },
+  { name: 'Numbers', abbrev: 'NUM', chapters: 36, testament: 'OT', originalLanguage: 'hebrew' },
+  { name: 'Deuteronomy', abbrev: 'DEU', chapters: 34, testament: 'OT', originalLanguage: 'hebrew' },
+  { name: 'Joshua', abbrev: 'JOS', chapters: 24, testament: 'OT', originalLanguage: 'hebrew' },
+  { name: 'Judges', abbrev: 'JDG', chapters: 21, testament: 'OT', originalLanguage: 'hebrew' },
+  { name: 'Ruth', abbrev: 'RUT', chapters: 4, testament: 'OT', originalLanguage: 'hebrew' },
+  { name: '1 Samuel', abbrev: '1SA', chapters: 31, testament: 'OT', originalLanguage: 'hebrew' },
+  { name: '2 Samuel', abbrev: '2SA', chapters: 24, testament: 'OT', originalLanguage: 'hebrew' },
+  { name: '1 Kings', abbrev: '1KI', chapters: 22, testament: 'OT', originalLanguage: 'hebrew' },
+  { name: '2 Kings', abbrev: '2KI', chapters: 25, testament: 'OT', originalLanguage: 'hebrew' },
+  { name: '1 Chronicles', abbrev: '1CH', chapters: 29, testament: 'OT', originalLanguage: 'hebrew' },
+  { name: '2 Chronicles', abbrev: '2CH', chapters: 36, testament: 'OT', originalLanguage: 'hebrew' },
+  { name: 'Ezra', abbrev: 'EZR', chapters: 10, testament: 'OT', originalLanguage: 'hebrew' },
+  { name: 'Nehemiah', abbrev: 'NEH', chapters: 13, testament: 'OT', originalLanguage: 'hebrew' },
+  { name: 'Esther', abbrev: 'EST', chapters: 10, testament: 'OT', originalLanguage: 'hebrew' },
+  { name: 'Job', abbrev: 'JOB', chapters: 42, testament: 'OT', originalLanguage: 'hebrew' },
+  { name: 'Psalms', abbrev: 'PSA', chapters: 150, testament: 'OT', originalLanguage: 'hebrew' },
+  { name: 'Proverbs', abbrev: 'PRO', chapters: 31, testament: 'OT', originalLanguage: 'hebrew' },
+  { name: 'Ecclesiastes', abbrev: 'ECC', chapters: 12, testament: 'OT', originalLanguage: 'hebrew' },
+  { name: 'Song of Solomon', abbrev: 'SNG', chapters: 8, testament: 'OT', originalLanguage: 'hebrew' },
+  { name: 'Isaiah', abbrev: 'ISA', chapters: 66, testament: 'OT', originalLanguage: 'hebrew' },
+  { name: 'Jeremiah', abbrev: 'JER', chapters: 52, testament: 'OT', originalLanguage: 'hebrew' },
+  { name: 'Lamentations', abbrev: 'LAM', chapters: 5, testament: 'OT', originalLanguage: 'hebrew' },
+  { name: 'Ezekiel', abbrev: 'EZK', chapters: 48, testament: 'OT', originalLanguage: 'hebrew' },
+  { name: 'Daniel', abbrev: 'DAN', chapters: 12, testament: 'OT', originalLanguage: 'aramaic' }, // Parts in Aramaic
+  { name: 'Hosea', abbrev: 'HOS', chapters: 14, testament: 'OT', originalLanguage: 'hebrew' },
+  { name: 'Joel', abbrev: 'JOL', chapters: 3, testament: 'OT', originalLanguage: 'hebrew' },
+  { name: 'Amos', abbrev: 'AMO', chapters: 9, testament: 'OT', originalLanguage: 'hebrew' },
+  { name: 'Obadiah', abbrev: 'OBA', chapters: 1, testament: 'OT', originalLanguage: 'hebrew' },
+  { name: 'Jonah', abbrev: 'JON', chapters: 4, testament: 'OT', originalLanguage: 'hebrew' },
+  { name: 'Micah', abbrev: 'MIC', chapters: 7, testament: 'OT', originalLanguage: 'hebrew' },
+  { name: 'Nahum', abbrev: 'NAM', chapters: 3, testament: 'OT', originalLanguage: 'hebrew' },
+  { name: 'Habakkuk', abbrev: 'HAB', chapters: 3, testament: 'OT', originalLanguage: 'hebrew' },
+  { name: 'Zephaniah', abbrev: 'ZEP', chapters: 3, testament: 'OT', originalLanguage: 'hebrew' },
+  { name: 'Haggai', abbrev: 'HAG', chapters: 2, testament: 'OT', originalLanguage: 'hebrew' },
+  { name: 'Zechariah', abbrev: 'ZEC', chapters: 14, testament: 'OT', originalLanguage: 'hebrew' },
+  { name: 'Malachi', abbrev: 'MAL', chapters: 4, testament: 'OT', originalLanguage: 'hebrew' },
+
+  // New Testament
+  { name: 'Matthew', abbrev: 'MAT', chapters: 28, testament: 'NT', originalLanguage: 'greek' },
+  { name: 'Mark', abbrev: 'MRK', chapters: 16, testament: 'NT', originalLanguage: 'greek' },
+  { name: 'Luke', abbrev: 'LUK', chapters: 24, testament: 'NT', originalLanguage: 'greek' },
+  { name: 'John', abbrev: 'JHN', chapters: 21, testament: 'NT', originalLanguage: 'greek' },
+  { name: 'Acts', abbrev: 'ACT', chapters: 28, testament: 'NT', originalLanguage: 'greek' },
+  { name: 'Romans', abbrev: 'ROM', chapters: 16, testament: 'NT', originalLanguage: 'greek' },
+  { name: '1 Corinthians', abbrev: '1CO', chapters: 16, testament: 'NT', originalLanguage: 'greek' },
+  { name: '2 Corinthians', abbrev: '2CO', chapters: 13, testament: 'NT', originalLanguage: 'greek' },
+  { name: 'Galatians', abbrev: 'GAL', chapters: 6, testament: 'NT', originalLanguage: 'greek' },
+  { name: 'Ephesians', abbrev: 'EPH', chapters: 6, testament: 'NT', originalLanguage: 'greek' },
+  { name: 'Philippians', abbrev: 'PHP', chapters: 4, testament: 'NT', originalLanguage: 'greek' },
+  { name: 'Colossians', abbrev: 'COL', chapters: 4, testament: 'NT', originalLanguage: 'greek' },
+  { name: '1 Thessalonians', abbrev: '1TH', chapters: 5, testament: 'NT', originalLanguage: 'greek' },
+  { name: '2 Thessalonians', abbrev: '2TH', chapters: 3, testament: 'NT', originalLanguage: 'greek' },
+  { name: '1 Timothy', abbrev: '1TI', chapters: 6, testament: 'NT', originalLanguage: 'greek' },
+  { name: '2 Timothy', abbrev: '2TI', chapters: 4, testament: 'NT', originalLanguage: 'greek' },
+  { name: 'Titus', abbrev: 'TIT', chapters: 3, testament: 'NT', originalLanguage: 'greek' },
+  { name: 'Philemon', abbrev: 'PHM', chapters: 1, testament: 'NT', originalLanguage: 'greek' },
+  { name: 'Hebrews', abbrev: 'HEB', chapters: 13, testament: 'NT', originalLanguage: 'greek' },
+  { name: 'James', abbrev: 'JAS', chapters: 5, testament: 'NT', originalLanguage: 'greek' },
+  { name: '1 Peter', abbrev: '1PE', chapters: 5, testament: 'NT', originalLanguage: 'greek' },
+  { name: '2 Peter', abbrev: '2PE', chapters: 3, testament: 'NT', originalLanguage: 'greek' },
+  { name: '1 John', abbrev: '1JN', chapters: 5, testament: 'NT', originalLanguage: 'greek' },
+  { name: '2 John', abbrev: '2JN', chapters: 1, testament: 'NT', originalLanguage: 'greek' },
+  { name: '3 John', abbrev: '3JN', chapters: 1, testament: 'NT', originalLanguage: 'greek' },
+  { name: 'Jude', abbrev: 'JUD', chapters: 1, testament: 'NT', originalLanguage: 'greek' },
+  { name: 'Revelation', abbrev: 'REV', chapters: 22, testament: 'NT', originalLanguage: 'greek' },
+];
+
+export const getBookByName = (name: string): BibleBook | undefined => {
+  return BIBLE_BOOKS.find(b => b.name.toLowerCase() === name.toLowerCase());
+};
+
+export const getBookByAbbrev = (abbrev: string): BibleBook | undefined => {
+  return BIBLE_BOOKS.find(b => b.abbrev.toLowerCase() === abbrev.toLowerCase());
+};
+
+ 
+==========================================
+FILE: \src\data\sampleBible.ts
+==========================================
+import { BibleVerse, BibleChapter } from '../types';
+
+export const john3Verses: BibleVerse[] = [
+  {
+    number: 16,
+    originalText: 'ÎŸá½•Ï„Ï‰Ï‚ Î³á½°Ï á¼ Î³Î¬Ï€Î·ÏƒÎµÎ½ á½ Î¸Îµá½¸Ï‚ Ï„á½¸Î½ ÎºÏŒÏƒÎ¼Î¿Î½',
+    englishText: 'For God so loved the world',
+    language: 'greek',
+  },
+  {
+    number: 17,
+    originalText: 'á½¥ÏƒÏ„Îµ Ï„á½¸Î½ Ï…á¼±á½¸Î½ Ï„á½¸Î½ Î¼Î¿Î½Î¿Î³ÎµÎ½á¿† á¼”Î´Ï‰ÎºÎµÎ½',
+    englishText: 'that he gave his only begotten Son',
+    language: 'greek',
+  },
+  {
+    number: 18,
+    originalText: 'á¼µÎ½Î± Ï€á¾¶Ï‚ á½ Ï€Î¹ÏƒÏ„ÎµÏÏ‰Î½ Îµá¼°Ï‚ Î±á½Ï„á½¸Î½',
+    englishText: 'that whoever believes in him',
+    language: 'greek',
+  },
+  {
+    number: 19,
+    originalText: 'Î¼á½´ á¼€Ï€ÏŒÎ»Î·Ï„Î±Î¹ á¼€Î»Î»á¾½ á¼”Ï‡á¿ƒ Î¶Ï‰á½´Î½ Î±á¼°ÏŽÎ½Î¹Î¿Î½',
+    englishText: 'should not perish but have everlasting life',
+    language: 'greek',
+  },
+];
+
+export const genesis1Verses: BibleVerse[] = [
+  {
+    number: 1,
+    originalText: '×‘Ö°Ö¼×¨Öµ××©Ö´××™×ª ×‘Ö¸Ö¼×¨Ö¸× ×Ö±×œÖ¹×”Ö´×™×',
+    englishText: 'In the beginning God created',
+    language: 'hebrew',
+  },
+  {
+    number: 2,
+    originalText: '×Öµ×ª ×”Ö·×©Ö¸Ö¼××žÖ·×™Ö´× ×•Ö°×Öµ×ª ×”Ö¸×Ö¸×¨Ö¶×¥',
+    englishText: 'the heavens and the earth',
+    language: 'hebrew',
+  },
+  {
+    number: 3,
+    originalText: '×•Ö°×”Ö¸×Ö¸×¨Ö¶×¥ ×”Ö¸×™Ö°×ªÖ¸×” ×ªÖ¹×”×•Ö¼ ×•Ö¸×‘Ö¹×”×•Ö¼',
+    englishText: 'And the earth was without form and void',
+    language: 'hebrew',
+  },
+  {
+    number: 4,
+    originalText: '×•Ö°×—Ö¹×©Ö¶××šÖ° ×¢Ö·×œÖ¾×¤Ö°Ö¼× Öµ×™ ×ªÖ°×”×•Ö¹×',
+    englishText: 'and darkness was upon the face of the deep',
+    language: 'hebrew',
+  },
+];
+
+export const matthew5Verses: BibleVerse[] = [
+  {
+    number: 1,
+    originalText: 'á¼¸Î´á½¼Î½ Î´á½² Ï„Î¿á½ºÏ‚ á½„Ï‡Î»Î¿Ï…Ï‚ á¼€Î½Î­Î²Î· Îµá¼°Ï‚ Ï„á½¸ á½„ÏÎ¿Ï‚',
+    englishText: 'And seeing the multitudes, he went up into a mountain',
+    language: 'greek',
+  },
+  {
+    number: 2,
+    originalText: 'ÎºÎ±á½¶ ÎºÎ±Î¸Î¯ÏƒÎ±Î½Ï„Î¿Ï‚ Î±á½Ï„Î¿á¿¦ Ï€ÏÎ¿Ïƒá¿†Î»Î¸Î±Î½ Î±á½Ï„á¿· Î¿á¼± Î¼Î±Î¸Î·Ï„Î±á½¶ Î±á½Ï„Î¿á¿¦',
+    englishText: 'and when he was set, his disciples came unto him',
+    language: 'greek',
+  },
+  {
+    number: 3,
+    originalText: 'ÎœÎ±ÎºÎ¬ÏÎ¹Î¿Î¹ Î¿á¼± Ï€Ï„Ï‰Ï‡Î¿á½¶ Ï„á¿· Ï€Î½ÎµÏÎ¼Î±Ï„Î¹',
+    englishText: 'Blessed are the poor in spirit',
+    language: 'greek',
+  },
+  {
+    number: 4,
+    originalText: 'á½…Ï„Î¹ Î±á½Ï„á¿¶Î½ á¼ÏƒÏ„Î¹Î½ á¼¡ Î²Î±ÏƒÎ¹Î»ÎµÎ¯Î± Ï„á¿¶Î½ Î¿á½ÏÎ±Î½á¿¶Î½',
+    englishText: 'for theirs is the kingdom of heaven',
+    language: 'greek',
+  },
+  {
+    number: 5,
+    originalText: 'ÎœÎ±ÎºÎ¬ÏÎ¹Î¿Î¹ Î¿á¼± Ï€ÎµÎ½Î¸Î¿á¿¦Î½Ï„ÎµÏ‚',
+    englishText: 'Blessed are they that mourn',
+    language: 'greek',
+  },
+  {
+    number: 6,
+    originalText: 'á½…Ï„Î¹ Î±á½Ï„Î¿á½¶ Ï€Î±ÏÎ±ÎºÎ»Î·Î¸Î®ÏƒÎ¿Î½Ï„Î±Î¹',
+    englishText: 'for they shall be comforted',
+    language: 'greek',
+  },
+];
+
+export const sampleChapters: BibleChapter[] = [
+  { book: 'Genesis', chapter: 1, verses: genesis1Verses, language: 'hebrew' },
+  { book: 'John', chapter: 3, verses: john3Verses, language: 'greek' },
+  { book: 'Matthew', chapter: 5, verses: matthew5Verses, language: 'greek' },
+];
+
+ 
+==========================================
+FILE: \src\navigation\AppNavigator.tsx
+==========================================
+import React from 'react';
+import { NavigationContainer } from '@react-navigation/native';
+import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
+import { createNativeStackNavigator } from '@react-navigation/native-stack';
+import { Ionicons } from '@expo/vector-icons';
+
+import { HomeScreen } from '../screens/HomeScreen';
+import { StudyRoomsScreen } from '../screens/StudyRoomsScreen';
+import { StudyRoomDetailScreen } from '../screens/StudyRoomDetailScreen';
+import { BibleScreen } from '../screens/BibleScreen';
+import { MessagesScreen } from '../screens/MessagesScreen';
+import { ProfileScreen } from '../screens/ProfileScreen';
+
+const Tab = createBottomTabNavigator();
+const Stack = createNativeStackNavigator();
+
+function StudyRoomsStack() {
+  return (
+    <Stack.Navigator screenOptions={{ headerShown: false }}>
+      <Stack.Screen name="StudyRoomsList" component={StudyRoomsScreen} />
+      <Stack.Screen name="StudyRoomDetail" component={StudyRoomDetailScreen} />
+    </Stack.Navigator>
+  );
+}
+
+function HomeStack() {
+  return (
+    <Stack.Navigator screenOptions={{ headerShown: false }}>
+      <Stack.Screen name="HomeMain" component={HomeScreen} />
+      <Stack.Screen name="StudyRoomDetail" component={StudyRoomDetailScreen} />
+    </Stack.Navigator>
+  );
+}
+
+export function AppNavigator() {
+  return (
+    <NavigationContainer>
+      <Tab.Navigator
+        screenOptions={({ route }) => ({
+          headerShown: false,
+          tabBarIcon: ({ focused, color, size }) => {
+            let iconName: keyof typeof Ionicons.glyphMap = 'home';
+
+            if (route.name === 'Home') {
+              iconName = focused ? 'home' : 'home-outline';
+            } else if (route.name === 'Study Rooms') {
+              iconName = focused ? 'people' : 'people-outline';
+            } else if (route.name === 'Bible') {
+              iconName = focused ? 'book' : 'book-outline';
+            } else if (route.name === 'Messages') {
+              iconName = focused ? 'chatbubbles' : 'chatbubbles-outline';
+            } else if (route.name === 'Profile') {
+              iconName = focused ? 'person' : 'person-outline';
+            }
+
+            return <Ionicons name={iconName} size={size} color={color} />;
+          },
+          tabBarActiveTintColor: '#6B4EFF',
+          tabBarInactiveTintColor: '#8B7355',
+          tabBarStyle: {
+            backgroundColor: '#FFFFFF',
+            borderTopColor: '#E8DDD4',
+            paddingTop: 8,
+            paddingBottom: 8,
+            height: 80,
+          },
+          tabBarLabelStyle: {
+            fontSize: 12,
+            fontWeight: '500',
+            marginTop: 4,
+          },
+        })}
+      >
+        <Tab.Screen name="Home" component={HomeStack} />
+        <Tab.Screen name="Study Rooms" component={StudyRoomsStack} />
+        <Tab.Screen name="Bible" component={BibleScreen} />
+        <Tab.Screen name="Messages" component={MessagesScreen} />
+        <Tab.Screen name="Profile" component={ProfileScreen} />
+      </Tab.Navigator>
+    </NavigationContainer>
+  );
+}
+
+ 
+==========================================
+FILE: \src\screens\AudioFirstScreen.tsx
+==========================================
+import React, { useState } from 'react';
+import {
+  View,
+  Text,
+  StyleSheet,
+  TouchableOpacity,
+} from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
+import { SpeakerIcon } from '../components/SpeakerIcon';
+import { useVoice } from '../context/VoiceContext';
+
+export function AudioFirstScreen({ onExit }: { onExit: () => void }) {
+  const [isListening, setIsListening] = useState(false);
+  const { selectedVoice } = useVoice();
+
+  const currentContent = `Welcome to Audio-First Mode. 
+  
+Currently reading: John Chapter 3, Verse 16.
+
+For God so loved the world that he gave his one and only Son, that whoever believes in him shall not perish but have eternal life.
+
+Say a command like "Read next verse" or "Open Psalms" to navigate.`;
+
+  return (
+    <View style={styles.container}>
+      {/* Exit Button */}
+      <TouchableOpacity style={styles.exitButton} onPress={onExit}>
+        <Ionicons name="close" size={28} color="#F5E6D3" />
+      </TouchableOpacity>
+
+      {/* Main Content */}
+      <View style={styles.content}>
+        <Text style={styles.title}>MyBible</Text>
+        <Text style={styles.subtitle}>Audio-First Mode</Text>
+
+        <View style={styles.textContainer}>
+          <Text style={styles.mainText}>{currentContent}</Text>
+        </View>
+
+        {/* Big Speaker Button */}
+        <View style={styles.speakerButton}>
+          <SpeakerIcon text={currentContent} size={48} color="#FFFFFF" />
+          <Text style={styles.speakerLabel}>Tap to Read Aloud</Text>
+        </View>
+
+        {/* Voice Info */}
+        <Text style={styles.voiceInfo}>
+          Using: {selectedVoice.name}
+        </Text>
+      </View>
+
+      {/* Voice Command Button */}
+      <TouchableOpacity
+        style={[styles.micButton, isListening && styles.micButtonActive]}
+        onPress={() => setIsListening(!isListening)}
+      >
+        <Ionicons
+          name={isListening ? 'radio' : 'mic'}
+          size={36}
+          color="#FFFFFF"
+        />
+        <Text style={styles.micLabel}>
+          {isListening ? 'Listening...' : 'Voice Command'}
+        </Text>
+      </TouchableOpacity>
+
+      {/* Command Examples */}
+      {isListening && (
+        <View style={styles.commandHints}>
+          <Text style={styles.hintTitle}>Try saying:</Text>
+          <Text style={styles.hintText}>"Read next verse"</Text>
+          <Text style={styles.hintText}>"Open Bible"</Text>
+          <Text style={styles.hintText}>"Use my cloned voice"</Text>
+          <Text style={styles.hintText}>"Join my Romans room"</Text>
+        </View>
+      )}
+    </View>
+  );
+}
+
+const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+    backgroundColor: '#1A0F0A',
+  },
+  exitButton: {
+    position: 'absolute',
+    top: 60,
+    right: 20,
+    zIndex: 10,
+    padding: 12,
+    backgroundColor: 'rgba(255,255,255,0.1)',
+    borderRadius: 30,
+  },
+  content: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 32,
+  },
+  title: {
+    fontSize: 36,
+    fontFamily: 'serif',
+    fontWeight: 'bold',
+    color: '#F5E6D3',
+    marginBottom: 8,
+  },
+  subtitle: {
+    fontSize: 18,
+    color: '#B8A080',
+    marginBottom: 40,
+  },
+  textContainer: {
+    backgroundColor: 'rgba(255,255,255,0.05)',
+    borderRadius: 20,
+    padding: 24,
+    marginBottom: 32,
+    maxWidth: '100%',
+  },
+  mainText: {
+    fontSize: 24,
+    color: '#F5E6D3',
+    lineHeight: 36,
+    textAlign: 'center',
+  },
+  speakerButton: {
+    alignItems: 'center',
+    backgroundColor: '#6B4EFF',
+    paddingVertical: 24,
+    paddingHorizontal: 48,
+    borderRadius: 20,
+    marginBottom: 16,
+  },
+  speakerLabel: {
+    color: '#FFFFFF',
+    fontSize: 18,
+    fontWeight: '600',
+    marginTop: 8,
+  },
+  voiceInfo: {
+    color: '#8B7355',
+    fontSize: 14,
+  },
+  micButton: {
+    position: 'absolute',
+    bottom: 50,
+    alignSelf: 'center',
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#6B4EFF',
+    paddingVertical: 20,
+    paddingHorizontal: 32,
+    borderRadius: 40,
+  },
+  micButtonActive: {
+    backgroundColor: '#E53935',
+  },
+  micLabel: {
+    color: '#FFFFFF',
+    fontSize: 18,
+    fontWeight: '600',
+    marginLeft: 12,
+  },
+  commandHints: {
+    position: 'absolute',
+    bottom: 130,
+    alignSelf: 'center',
+    backgroundColor: 'rgba(255,255,255,0.1)',
+    borderRadius: 16,
+    padding: 20,
+    alignItems: 'center',
+  },
+  hintTitle: {
+    color: '#B8A080',
+    fontSize: 14,
+    marginBottom: 12,
+  },
+  hintText: {
+    color: '#F5E6D3',
+    fontSize: 16,
+    marginBottom: 8,
+  },
+});
+
+ 
+==========================================
+FILE: \src\screens\BibleScreen.tsx
+==========================================
+import React, { useState, useEffect, useCallback } from 'react';
+import {
+  View,
+  Text,
+  StyleSheet,
+  TouchableOpacity,
+  Modal,
+  ScrollView,
+  ActivityIndicator,
+  TextInput,
+} from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
+import { SpeakerIcon } from '../components/SpeakerIcon';
+import { DualColumnBible } from '../components/DualColumnBible';
+import { useVoice } from '../context/VoiceContext';
+import { BIBLE_BOOKS, BibleBook } from '../data/bibleBooks';
+import { BibleVerse } from '../types';
+import { fetchBiblePassage, GETBIBLE_BOOK_MAP, BOLLS_BOOK_MAP } from '../services/bibleApi';
+import { storageService, BibleNote, BibleHighlight } from '../services/storageService';
+
+export function BibleScreen() {
+  const [selectedBook, setSelectedBook] = useState<BibleBook>(BIBLE_BOOKS[42]); // Matthew
+  const [selectedChapter, setSelectedChapter] = useState(1);
+  const [showBookPicker, setShowBookPicker] = useState(false);
+  const [showChapterPicker, setShowChapterPicker] = useState(false);
+  const [showNoteModal, setShowNoteModal] = useState(false);
+  const [verses, setVerses] = useState<BibleVerse[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [activeTab, setActiveTab] = useState<'OT' | 'NT'>('NT');
+  const [noteText, setNoteText] = useState('');
+  const [selectedVerseForNote, setSelectedVerseForNote] = useState<number | null>(null);
+  const [highlights, setHighlights] = useState<Map<number, string>>(new Map());
+  const { textSize } = useVoice();
+
+  // Fetch verses when book/chapter changes
+  useEffect(() => {
+    loadVerses();
+    loadHighlights();
+  }, [selectedBook, selectedChapter]);
+
+  const loadVerses = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    
+    try {
+      const isOT = selectedBook.testament === 'OT';
+      const fetchedVerses = await fetchBiblePassage(
+        selectedBook.name,
+        selectedChapter,
+        isOT
+      );
+      
+      if (fetchedVerses.length > 0) {
+        setVerses(fetchedVerses);
+      } else {
+        setError('No verses found. Please try again.');
+        setVerses([]);
+      }
+    } catch (err) {
+      console.error('Error loading verses:', err);
+      setError('Failed to load verses. Check your internet connection.');
+      setVerses([]);
+    }
+    
+    setLoading(false);
+  }, [selectedBook, selectedChapter]);
+
+  const loadHighlights = useCallback(async () => {
+    try {
+      const savedHighlights = await storageService.getHighlightsForPassage(
+        selectedBook.name,
+        selectedChapter
+      );
+      const highlightMap = new Map<number, string>();
+      savedHighlights.forEach(h => highlightMap.set(h.verse, h.color));
+      setHighlights(highlightMap);
+    } catch (err) {
+      console.error('Error loading highlights:', err);
+    }
+  }, [selectedBook, selectedChapter]);
+
+  const handleSaveNote = async () => {
+    if (!noteText.trim()) return;
+    
+    try {
+      const note: BibleNote = {
+        id: `note-${Date.now()}`,
+        book: selectedBook.name,
+        chapter: selectedChapter,
+        verse: selectedVerseForNote || 1,
+        content: noteText,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      };
+      
+      await storageService.saveNote(note);
+      setNoteText('');
+      setShowNoteModal(false);
+      setSelectedVerseForNote(null);
+    } catch (err) {
+      console.error('Error saving note:', err);
+    }
+  };
+
+  const handleHighlight = async (verseNumber: number, color: string) => {
+    try {
+      const highlight: BibleHighlight = {
+        id: `highlight-${Date.now()}`,
+        book: selectedBook.name,
+        chapter: selectedChapter,
+        verse: verseNumber,
+        color,
+        createdAt: new Date().toISOString(),
+      };
+      
+      await storageService.saveHighlight(highlight);
+      setHighlights(prev => new Map(prev).set(verseNumber, color));
+    } catch (err) {
+      console.error('Error saving highlight:', err);
+    }
+  };
+
+  const reference = `${selectedBook.name} ${selectedChapter}`;
+  const filteredBooks = BIBLE_BOOKS.filter(b => b.testament === activeTab);
+
+  return (
+    <View style={styles.container}>
+      {/* Header */}
+      <View style={styles.header}>
+        <View style={styles.titleRow}>
+          <Text style={[styles.title, { fontSize: textSize + 6 }]}>Bible</Text>
+          <SpeakerIcon text="Bible reading. Select a book and chapter to begin." color="#F5E6D3" />
+        </View>
+        <View style={styles.selectorRow}>
+          <TouchableOpacity
+            style={styles.selector}
+            onPress={() => setShowBookPicker(true)}
+          >
+            <Text style={styles.selectorText}>{selectedBook.name}</Text>
+            <Ionicons name="chevron-down" size={18} color="#F5E6D3" />
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={styles.chapterSelector}
+            onPress={() => setShowChapterPicker(true)}
+          >
+            <Text style={styles.selectorText}>Ch. {selectedChapter}</Text>
+            <Ionicons name="chevron-down" size={18} color="#F5E6D3" />
+          </TouchableOpacity>
+        </View>
+      </View>
+
+      {/* Bible Content */}
+      <View style={styles.bibleContainer}>
+        {loading ? (
+          <View style={styles.loadingContainer}>
+            <ActivityIndicator size="large" color="#6B4EFF" />
+            <Text style={styles.loadingText}>Loading {reference}...</Text>
+          </View>
+        ) : error ? (
+          <View style={styles.errorContainer}>
+            <Ionicons name="cloud-offline" size={48} color="#E57373" />
+            <Text style={styles.errorText}>{error}</Text>
+            <TouchableOpacity style={styles.retryButton} onPress={loadVerses}>
+              <Text style={styles.retryButtonText}>Try Again</Text>
+            </TouchableOpacity>
+          </View>
+        ) : (
+          <DualColumnBible
+            verses={verses}
+            reference={reference}
+            showPerVerseSpeakers={true}
+            highlights={highlights}
+          />
+        )}
+      </View>
+
+      {/* Tools Row */}
+      <View style={styles.toolsRow}>
+        <TouchableOpacity style={styles.tool}>
+          <Ionicons name="color-fill" size={22} color="#6B4EFF" />
+          <Text style={styles.toolText}>Highlight</Text>
+        </TouchableOpacity>
+        <TouchableOpacity style={styles.tool} onPress={() => setShowNoteModal(true)}>
+          <Ionicons name="create" size={22} color="#6B4EFF" />
+          <Text style={styles.toolText}>Note</Text>
+        </TouchableOpacity>
+        <TouchableOpacity style={styles.tool}>
+          <Ionicons name="share-social" size={22} color="#6B4EFF" />
+          <Text style={styles.toolText}>Share</Text>
+        </TouchableOpacity>
+        <TouchableOpacity style={styles.tool}>
+          <Ionicons name="git-compare" size={22} color="#6B4EFF" />
+          <Text style={styles.toolText}>Compare</Text>
+        </TouchableOpacity>
+        <TouchableOpacity style={styles.tool}>
+          <Ionicons name="book" size={22} color="#6B4EFF" />
+          <Text style={styles.toolText}>Lexicon</Text>
+        </TouchableOpacity>
+      </View>
+
+      {/* Book Picker Modal */}
+      <Modal visible={showBookPicker} animationType="slide" transparent>
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>Select Book</Text>
+              <TouchableOpacity onPress={() => setShowBookPicker(false)}>
+                <Ionicons name="close" size={24} color="#2D1810" />
+              </TouchableOpacity>
+            </View>
+            
+            {/* Testament Tabs */}
+            <View style={styles.testamentTabs}>
+              <TouchableOpacity
+                style={[styles.testamentTab, activeTab === 'OT' && styles.activeTab]}
+                onPress={() => setActiveTab('OT')}
+              >
+                <Text style={[styles.tabText, activeTab === 'OT' && styles.activeTabText]}>
+                  Old Testament
+                </Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.testamentTab, activeTab === 'NT' && styles.activeTab]}
+                onPress={() => setActiveTab('NT')}
+              >
+                <Text style={[styles.tabText, activeTab === 'NT' && styles.activeTabText]}>
+                  New Testament
+                </Text>
+              </TouchableOpacity>
+            </View>
+
+            <ScrollView style={styles.bookList}>
+              {filteredBooks.map((book) => (
+                <TouchableOpacity
+                  key={book.abbrev}
+                  style={[
+                    styles.bookItem,
+                    selectedBook.abbrev === book.abbrev && styles.selectedBook,
+                  ]}
+                  onPress={() => {
+                    setSelectedBook(book);
+                    setSelectedChapter(1);
+                    setShowBookPicker(false);
+                  }}
+                >
+                  <View style={styles.bookInfo}>
+                    <Text style={[
+                      styles.bookName,
+                      selectedBook.abbrev === book.abbrev && styles.selectedBookText,
+                    ]}>
+                      {book.name}
+                    </Text>
+                    <Text style={styles.bookMeta}>
+                      {book.chapters} chapters â€¢ {book.originalLanguage === 'hebrew' ? '×¢×‘×¨×™×ª' : 
+                        book.originalLanguage === 'aramaic' ? '××¨×ž×™×ª' : 'á¼™Î»Î»Î·Î½Î¹ÎºÎ¬'}
+                    </Text>
+                  </View>
+                  <Text style={styles.bookAbbrev}>{book.abbrev}</Text>
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Chapter Picker Modal */}
+      <Modal visible={showChapterPicker} animationType="slide" transparent>
+        <View style={styles.modalOverlay}>
+          <View style={styles.chapterModalContent}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>Select Chapter</Text>
+              <TouchableOpacity onPress={() => setShowChapterPicker(false)}>
+                <Ionicons name="close" size={24} color="#2D1810" />
+              </TouchableOpacity>
+            </View>
+            <ScrollView contentContainerStyle={styles.chapterGrid}>
+              {Array.from({ length: selectedBook.chapters }, (_, i) => i + 1).map((ch) => (
+                <TouchableOpacity
+                  key={ch}
+                  style={[
+                    styles.chapterButton,
+                    selectedChapter === ch && styles.selectedChapter,
+                  ]}
+                  onPress={() => {
+                    setSelectedChapter(ch);
+                    setShowChapterPicker(false);
+                  }}
+                >
+                  <Text style={[
+                    styles.chapterNumber,
+                    selectedChapter === ch && styles.selectedChapterText,
+                  ]}>
+                    {ch}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Add Note Modal */}
+      <Modal visible={showNoteModal} animationType="slide" transparent>
+        <View style={styles.modalOverlay}>
+          <View style={styles.noteModalContent}>
+            <View style={styles.modalHeader}>
+              <View style={styles.titleRow}>
+                <Text style={styles.modalTitle}>Add Note</Text>
+                <SpeakerIcon text="Add a personal note to this passage" />
+              </View>
+              <TouchableOpacity onPress={() => setShowNoteModal(false)}>
+                <Ionicons name="close" size={24} color="#2D1810" />
+              </TouchableOpacity>
+            </View>
+            <View style={styles.noteContent}>
+              <Text style={styles.noteLabel}>Your thoughts on {reference}:</Text>
+              <SpeakerIcon text={`Your thoughts on ${reference}`} />
+            </View>
+            <TextInput
+              style={styles.noteInput}
+              placeholder="Write your note here..."
+              placeholderTextColor="#8B7355"
+              multiline
+              value={noteText}
+              onChangeText={setNoteText}
+            />
+            <View style={styles.noteActions}>
+              <TouchableOpacity
+                style={styles.cancelButton}
+                onPress={() => {
+                  setShowNoteModal(false);
+                  setNoteText('');
+                }}
+              >
+                <Text style={styles.cancelButtonText}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity 
+                style={[styles.saveButton, !noteText.trim() && styles.saveButtonDisabled]}
+                onPress={handleSaveNote}
+                disabled={!noteText.trim()}
+              >
+                <Text style={styles.saveButtonText}>Save Note</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+    </View>
+  );
+}
+
+const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+    backgroundColor: '#FAF7F2',
+  },
+  header: {
+    padding: 24,
+    paddingTop: 60,
+    backgroundColor: '#2D1810',
+  },
+  titleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  title: {
+    fontFamily: 'serif',
+    fontWeight: 'bold',
+    color: '#F5E6D3',
+  },
+  selectorRow: {
+    flexDirection: 'row',
+    gap: 12,
+  },
+  selector: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(255,255,255,0.1)',
+    paddingVertical: 10,
+    paddingHorizontal: 16,
+    borderRadius: 8,
+    flex: 1,
+  },
+  chapterSelector: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(255,255,255,0.1)',
+    paddingVertical: 10,
+    paddingHorizontal: 16,
+    borderRadius: 8,
+  },
+  selectorText: {
+    color: '#F5E6D3',
+    fontSize: 16,
+    fontWeight: '500',
+    marginRight: 8,
+  },
+  bibleContainer: {
+    flex: 1,
+    padding: 16,
+  },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  loadingText: {
+    marginTop: 12,
+    color: '#5C4A3D',
+    fontSize: 16,
+  },
+  errorContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 20,
+  },
+  errorText: {
+    marginTop: 12,
+    color: '#5C4A3D',
+    fontSize: 16,
+    textAlign: 'center',
+  },
+  retryButton: {
+    marginTop: 16,
+    backgroundColor: '#6B4EFF',
+    paddingVertical: 12,
+    paddingHorizontal: 24,
+    borderRadius: 8,
+  },
+  retryButtonText: {
+    color: '#FFFFFF',
+    fontWeight: '600',
+  },
+  toolsRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-around',
+    padding: 16,
+    paddingBottom: 100,
+    backgroundColor: '#FFFFFF',
+    borderTopWidth: 1,
+    borderTopColor: '#E8DDD4',
+  },
+  tool: {
+    alignItems: 'center',
+  },
+  toolText: {
+    marginTop: 4,
+    fontSize: 11,
+    color: '#5C4A3D',
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    justifyContent: 'flex-end',
+  },
+  modalContent: {
+    backgroundColor: '#FFFFFF',
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    maxHeight: '80%',
+  },
+  chapterModalContent: {
+    backgroundColor: '#FFFFFF',
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    maxHeight: '60%',
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: 20,
+    borderBottomWidth: 1,
+    borderBottomColor: '#E8DDD4',
+  },
+  modalTitle: {
+    fontSize: 20,
+    fontFamily: 'serif',
+    fontWeight: '600',
+    color: '#2D1810',
+  },
+  testamentTabs: {
+    flexDirection: 'row',
+    padding: 12,
+    gap: 8,
+  },
+  testamentTab: {
+    flex: 1,
+    paddingVertical: 10,
+    alignItems: 'center',
+    borderRadius: 8,
+    backgroundColor: '#F5F0EA',
+  },
+  activeTab: {
+    backgroundColor: '#6B4EFF',
+  },
+  tabText: {
+    fontWeight: '600',
+    color: '#5C4A3D',
+  },
+  activeTabText: {
+    color: '#FFFFFF',
+  },
+  bookList: {
+    padding: 16,
+  },
+  bookItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 14,
+    paddingHorizontal: 12,
+    borderRadius: 10,
+    marginBottom: 6,
+  },
+  selectedBook: {
+    backgroundColor: '#E8E0FF',
+  },
+  bookInfo: {
+    flex: 1,
+  },
+  bookName: {
+    fontSize: 17,
+    fontWeight: '600',
+    color: '#2D1810',
+    marginBottom: 2,
+  },
+  selectedBookText: {
+    color: '#6B4EFF',
+  },
+  bookMeta: {
+    fontSize: 13,
+    color: '#8B7355',
+  },
+  bookAbbrev: {
+    fontSize: 12,
+    color: '#B8A080',
+    fontWeight: '500',
+  },
+  chapterGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    padding: 16,
+    gap: 8,
+  },
+  chapterButton: {
+    width: 50,
+    height: 50,
+    borderRadius: 25,
+    backgroundColor: '#F5F0EA',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  selectedChapter: {
+    backgroundColor: '#6B4EFF',
+  },
+  chapterNumber: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#2D1810',
+  },
+  selectedChapterText: {
+    color: '#FFFFFF',
+  },
+  noteModalContent: {
+    backgroundColor: '#FFFFFF',
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    padding: 20,
+  },
+  noteContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 16,
+  },
+  noteLabel: {
+    fontSize: 15,
+    color: '#5C4A3D',
+  },
+  noteInput: {
+    backgroundColor: '#F5F0EA',
+    borderRadius: 12,
+    padding: 16,
+    minHeight: 120,
+    marginTop: 12,
+    fontSize: 16,
+    color: '#2D1810',
+    textAlignVertical: 'top',
+  },
+  noteActions: {
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+    marginTop: 20,
+  },
+  cancelButton: {
+    paddingVertical: 12,
+    paddingHorizontal: 20,
+    marginRight: 12,
+  },
+  cancelButtonText: {
+    color: '#5C4A3D',
+    fontWeight: '600',
+  },
+  saveButton: {
+    backgroundColor: '#6B4EFF',
+    paddingVertical: 12,
+    paddingHorizontal: 24,
+    borderRadius: 8,
+  },
+  saveButtonDisabled: {
+    backgroundColor: '#B8A0FF',
+  },
+  saveButtonText: {
+    color: '#FFFFFF',
+    fontWeight: '600',
+  },
+});
+ 
+==========================================
+FILE: \src\screens\HomeScreen.tsx
+==========================================
+import React from 'react';
+import {
+  View,
+  Text,
+  ScrollView,
+  StyleSheet,
+  TouchableOpacity,
+} from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
+import { SpeakerIcon } from '../components/SpeakerIcon';
+import { useVoice } from '../context/VoiceContext';
+
+export function HomeScreen({ navigation }: any) {
+  const { textSize } = useVoice();
+
+  const currentStudy = {
+    title: 'The Gospel of John',
+    description: 'Chapter 3: Jesus and Nicodemus - Understanding spiritual rebirth',
+  };
+
+  const recommendedPlans = [
+    { id: '1', name: 'Psalms in 30 Days', description: 'Daily readings through the book of Psalms' },
+    { id: '2', name: 'Life of Jesus', description: 'A journey through the four Gospels' },
+    { id: '3', name: 'Proverbs Wisdom', description: 'Practical wisdom for daily living' },
+  ];
+
+  const upcomingSessions = [
+    { id: '1', title: 'Romans Deep Dive', time: 'Today, 7:00 PM', host: 'Pastor Michael' },
+    { id: '2', title: 'Hebrew Basics', time: 'Tomorrow, 10:00 AM', host: 'Dr. Sarah' },
+  ];
+
+  return (
+    <ScrollView style={styles.container} showsVerticalScrollIndicator={false}>
+      {/* Header */}
+      <View style={styles.header}>
+        <Text style={[styles.appName, { fontSize: textSize + 8 }]}>MyBible</Text>
+        <View style={styles.greetingRow}>
+          <Text style={[styles.greeting, { fontSize: textSize }]}>Welcome back, beloved</Text>
+          <SpeakerIcon text="Welcome back, beloved. May God's wisdom guide your study today." />
+        </View>
+      </View>
+
+      {/* Current Study Card */}
+      <View style={styles.card}>
+        <View style={styles.cardHeader}>
+          <Ionicons name="book" size={24} color="#6B4EFF" />
+          <Text style={styles.cardLabel}>Current Study</Text>
+        </View>
+        <View style={styles.titleRow}>
+          <Text style={[styles.cardTitle, { fontSize: textSize + 2 }]}>{currentStudy.title}</Text>
+          <SpeakerIcon text={currentStudy.title} />
+        </View>
+        <View style={styles.descRow}>
+          <Text style={[styles.cardDescription, { fontSize: textSize }]}>{currentStudy.description}</Text>
+          <SpeakerIcon text={currentStudy.description} size={16} />
+        </View>
+        <TouchableOpacity
+          style={styles.primaryButton}
+          onPress={() => navigation.navigate('StudyRoomDetail')}
+        >
+          <Text style={styles.buttonText}>Resume Study</Text>
+        </TouchableOpacity>
+      </View>
+
+      {/* Recommended Plans */}
+      <View style={styles.section}>
+        <View style={styles.sectionHeader}>
+          <Text style={[styles.sectionTitle, { fontSize: textSize + 2 }]}>Recommended Plans</Text>
+          <SpeakerIcon text="Recommended study plans for you" />
+        </View>
+        {recommendedPlans.map((plan) => (
+          <View key={plan.id} style={styles.planCard}>
+            <View style={styles.titleRow}>
+              <Text style={[styles.planName, { fontSize: textSize }]}>{plan.name}</Text>
+              <SpeakerIcon text={plan.name} size={16} />
+            </View>
+            <View style={styles.descRow}>
+              <Text style={[styles.planDescription, { fontSize: textSize - 2 }]}>{plan.description}</Text>
+              <SpeakerIcon text={plan.description} size={14} />
+            </View>
+            <TouchableOpacity style={styles.secondaryButton}>
+              <Text style={styles.secondaryButtonText}>View Plan</Text>
+            </TouchableOpacity>
+          </View>
+        ))}
+      </View>
+
+      {/* Upcoming Sessions */}
+      <View style={styles.section}>
+        <View style={styles.sectionHeader}>
+          <Text style={[styles.sectionTitle, { fontSize: textSize + 2 }]}>Upcoming Sessions</Text>
+          <SpeakerIcon text="Your upcoming study sessions" />
+        </View>
+        {upcomingSessions.map((session) => (
+          <View key={session.id} style={styles.sessionCard}>
+            <View style={styles.sessionInfo}>
+              <View style={styles.titleRow}>
+                <Text style={[styles.sessionTitle, { fontSize: textSize }]}>{session.title}</Text>
+                <SpeakerIcon text={session.title} size={16} />
+              </View>
+              <View style={styles.descRow}>
+                <Text style={[styles.sessionMeta, { fontSize: textSize - 2 }]}>
+                  {session.time} â€¢ {session.host}
+                </Text>
+                <SpeakerIcon text={`${session.time}, hosted by ${session.host}`} size={14} />
+              </View>
+            </View>
+            <TouchableOpacity style={styles.joinButton}>
+              <Text style={styles.joinButtonText}>Join</Text>
+            </TouchableOpacity>
+          </View>
+        ))}
+      </View>
+
+      <View style={styles.bottomPadding} />
+    </ScrollView>
+  );
+}
+
+const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+    backgroundColor: '#FAF7F2',
+  },
+  header: {
+    padding: 24,
+    paddingTop: 60,
+    backgroundColor: '#2D1810',
+  },
+  appName: {
+    fontFamily: 'serif',
+    fontWeight: 'bold',
+    color: '#F5E6D3',
+    marginBottom: 8,
+  },
+  greetingRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  greeting: {
+    color: '#D4C4B0',
+  },
+  card: {
+    backgroundColor: '#FFFFFF',
+    margin: 16,
+    borderRadius: 16,
+    padding: 20,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.08,
+    shadowRadius: 8,
+    elevation: 3,
+  },
+  cardHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  cardLabel: {
+    marginLeft: 8,
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#6B4EFF',
+    textTransform: 'uppercase',
+    letterSpacing: 1,
+  },
+  titleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  cardTitle: {
+    fontFamily: 'serif',
+    fontWeight: '600',
+    color: '#2D1810',
+    flex: 1,
+  },
+  descRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    marginBottom: 16,
+  },
+  cardDescription: {
+    color: '#5C4A3D',
+    flex: 1,
+    lineHeight: 22,
+  },
+  primaryButton: {
+    backgroundColor: '#6B4EFF',
+    paddingVertical: 14,
+    borderRadius: 10,
+    alignItems: 'center',
+  },
+  buttonText: {
+    color: '#FFFFFF',
+    fontWeight: '600',
+    fontSize: 16,
+  },
+  section: {
+    padding: 16,
+  },
+  sectionHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 16,
+  },
+  sectionTitle: {
+    fontFamily: 'serif',
+    fontWeight: '600',
+    color: '#2D1810',
+  },
+  planCard: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 12,
+    padding: 16,
+    marginBottom: 12,
+  },
+  planName: {
+    fontWeight: '600',
+    color: '#2D1810',
+    flex: 1,
+  },
+  planDescription: {
+    color: '#8B7355',
+    flex: 1,
+  },
+  secondaryButton: {
+    borderWidth: 1,
+    borderColor: '#6B4EFF',
+    paddingVertical: 10,
+    borderRadius: 8,
+    alignItems: 'center',
+    marginTop: 12,
+  },
+  secondaryButtonText: {
+    color: '#6B4EFF',
+    fontWeight: '600',
+  },
+  sessionCard: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 12,
+    padding: 16,
+    marginBottom: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  sessionInfo: {
+    flex: 1,
+  },
+  sessionTitle: {
+    fontWeight: '600',
+    color: '#2D1810',
+    flex: 1,
+  },
+  sessionMeta: {
+    color: '#8B7355',
+    flex: 1,
+  },
+  joinButton: {
+    backgroundColor: '#E8F5E9',
+    paddingVertical: 8,
+    paddingHorizontal: 20,
+    borderRadius: 8,
+  },
+  joinButtonText: {
+    color: '#2E7D32',
+    fontWeight: '600',
+  },
+  bottomPadding: {
+    height: 100,
+  },
+});
+
+ 
+==========================================
+FILE: \src\screens\MessagesScreen.tsx
+==========================================
+import React, { useState } from 'react';
+import {
+  View,
+  Text,
+  ScrollView,
+  StyleSheet,
+  TouchableOpacity,
+  TextInput,
+  KeyboardAvoidingView,
+  Platform,
+} from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
+import { SpeakerIcon } from '../components/SpeakerIcon';
+import { useVoice } from '../context/VoiceContext';
+
+const conversations = [
+  { id: '1', name: 'Sarah Johnson', lastMessage: 'That verse really spoke to me!', avatar: 'S', unread: 2 },
+  { id: '2', name: 'Romans Study Group', lastMessage: 'Michael: See you all Tuesday!', avatar: 'R', unread: 0 },
+  { id: '3', name: 'Pastor David', lastMessage: 'Thank you for your question about...', avatar: 'P', unread: 1 },
+  { id: '4', name: 'Hebrew Class', lastMessage: 'Dr. Ruth: Homework is posted', avatar: 'H', unread: 0 },
+];
+
+const chatMessages = [
+  { id: '1', sender: 'Sarah Johnson', text: 'Hi! I loved today\'s study session.', time: '10:30 AM', isOwn: false },
+  { id: '2', sender: 'You', text: 'Me too! The Greek word study was fascinating.', time: '10:32 AM', isOwn: true },
+  { id: '3', sender: 'Sarah Johnson', text: 'That verse really spoke to me!', time: '10:35 AM', isOwn: false },
+];
+
+export function MessagesScreen() {
+  const [selectedConversation, setSelectedConversation] = useState<string | null>(null);
+  const [message, setMessage] = useState('');
+  const { textSize } = useVoice();
+
+  if (selectedConversation) {
+    const convo = conversations.find(c => c.id === selectedConversation);
+    return (
+      <KeyboardAvoidingView
+        style={styles.container}
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+      >
+        {/* Chat Header */}
+        <View style={styles.chatHeader}>
+          <TouchableOpacity
+            style={styles.backButton}
+            onPress={() => setSelectedConversation(null)}
+          >
+            <Ionicons name="arrow-back" size={24} color="#F5E6D3" />
+          </TouchableOpacity>
+          <View style={styles.chatHeaderContent}>
+            <Text style={[styles.chatHeaderName, { fontSize: textSize }]}>{convo?.name}</Text>
+            <SpeakerIcon text={convo?.name || ''} color="#F5E6D3" size={16} />
+          </View>
+        </View>
+
+        {/* Messages */}
+        <ScrollView style={styles.messagesContainer} showsVerticalScrollIndicator={false}>
+          {chatMessages.map((msg) => (
+            <View
+              key={msg.id}
+              style={[styles.messageBubble, msg.isOwn && styles.ownMessage]}
+            >
+              {!msg.isOwn && <Text style={styles.senderName}>{msg.sender}</Text>}
+              <View style={styles.messageContent}>
+                <Text style={[styles.messageText, { fontSize: textSize }]}>{msg.text}</Text>
+                <SpeakerIcon text={`${msg.sender} says: ${msg.text}`} size={14} />
+              </View>
+              <Text style={styles.messageTime}>{msg.time}</Text>
+            </View>
+          ))}
+        </ScrollView>
+
+        {/* Input */}
+        <View style={styles.inputContainer}>
+          <TextInput
+            style={styles.textInput}
+            placeholder="Type a message..."
+            placeholderTextColor="#8B7355"
+            value={message}
+            onChangeText={setMessage}
+          />
+          <TouchableOpacity style={styles.micButton}>
+            <Ionicons name="mic" size={22} color="#6B4EFF" />
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.sendButton}>
+            <Ionicons name="send" size={20} color="#FFFFFF" />
+          </TouchableOpacity>
+        </View>
+      </KeyboardAvoidingView>
+    );
+  }
+
+  return (
+    <View style={styles.container}>
+      {/* Header */}
+      <View style={styles.header}>
+        <View style={styles.titleRow}>
+          <Text style={[styles.title, { fontSize: textSize + 6 }]}>Messages</Text>
+          <SpeakerIcon text="Your messages and conversations" color="#F5E6D3" />
+        </View>
+      </View>
+
+      {/* Conversations List */}
+      <ScrollView style={styles.conversationsList} showsVerticalScrollIndicator={false}>
+        {conversations.map((convo) => (
+          <TouchableOpacity
+            key={convo.id}
+            style={styles.conversationItem}
+            onPress={() => setSelectedConversation(convo.id)}
+          >
+            <View style={styles.avatar}>
+              <Text style={styles.avatarText}>{convo.avatar}</Text>
+            </View>
+            <View style={styles.conversationContent}>
+              <Text style={[styles.conversationName, { fontSize: textSize }]}>{convo.name}</Text>
+              <Text style={[styles.lastMessage, { fontSize: textSize - 2 }]} numberOfLines={1}>
+                {convo.lastMessage}
+              </Text>
+            </View>
+            <View style={styles.conversationMeta}>
+              <SpeakerIcon
+                text={`${convo.name}. ${convo.lastMessage}`}
+                size={16}
+              />
+              {convo.unread > 0 && (
+                <View style={styles.unreadBadge}>
+                  <Text style={styles.unreadText}>{convo.unread}</Text>
+                </View>
+              )}
+            </View>
+          </TouchableOpacity>
+        ))}
+        <View style={styles.bottomPadding} />
+      </ScrollView>
+    </View>
+  );
+}
+
+const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+    backgroundColor: '#FAF7F2',
+  },
+  header: {
+    padding: 24,
+    paddingTop: 60,
+    backgroundColor: '#2D1810',
+  },
+  titleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  title: {
+    fontFamily: 'serif',
+    fontWeight: 'bold',
+    color: '#F5E6D3',
+  },
+  conversationsList: {
+    flex: 1,
+  },
+  conversationItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 16,
+    backgroundColor: '#FFFFFF',
+    borderBottomWidth: 1,
+    borderBottomColor: '#F0E6D8',
+  },
+  avatar: {
+    width: 50,
+    height: 50,
+    borderRadius: 25,
+    backgroundColor: '#6B4EFF',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  avatarText: {
+    color: '#FFFFFF',
+    fontSize: 20,
+    fontWeight: '600',
+  },
+  conversationContent: {
+    flex: 1,
+    marginLeft: 14,
+  },
+  conversationName: {
+    fontWeight: '600',
+    color: '#2D1810',
+    marginBottom: 4,
+  },
+  lastMessage: {
+    color: '#8B7355',
+  },
+  conversationMeta: {
+    alignItems: 'flex-end',
+  },
+  unreadBadge: {
+    backgroundColor: '#6B4EFF',
+    borderRadius: 12,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    marginTop: 8,
+  },
+  unreadText: {
+    color: '#FFFFFF',
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  chatHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 16,
+    paddingTop: 60,
+    backgroundColor: '#2D1810',
+  },
+  backButton: {
+    padding: 8,
+  },
+  chatHeaderContent: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginLeft: 8,
+  },
+  chatHeaderName: {
+    fontFamily: 'serif',
+    fontWeight: '600',
+    color: '#F5E6D3',
+  },
+  messagesContainer: {
+    flex: 1,
+    padding: 16,
+  },
+  messageBubble: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 16,
+    padding: 12,
+    marginBottom: 12,
+    maxWidth: '80%',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05,
+    shadowRadius: 4,
+    elevation: 1,
+  },
+  ownMessage: {
+    backgroundColor: '#E8E0FF',
+    alignSelf: 'flex-end',
+  },
+  senderName: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#6B4EFF',
+    marginBottom: 4,
+  },
+  messageContent: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+  },
+  messageText: {
+    color: '#2D1810',
+    flex: 1,
+    lineHeight: 22,
+  },
+  messageTime: {
+    fontSize: 11,
+    color: '#8B7355',
+    marginTop: 6,
+    textAlign: 'right',
+  },
+  inputContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 12,
+    paddingBottom: 30,
+    backgroundColor: '#FFFFFF',
+    borderTopWidth: 1,
+    borderTopColor: '#E8DDD4',
+  },
+  textInput: {
+    flex: 1,
+    backgroundColor: '#F5F0EA',
+    borderRadius: 24,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    fontSize: 15,
+    color: '#2D1810',
+  },
+  micButton: {
+    padding: 10,
+    marginLeft: 8,
+  },
+  sendButton: {
+    backgroundColor: '#6B4EFF',
+    padding: 12,
+    borderRadius: 24,
+    marginLeft: 4,
+  },
+  bottomPadding: {
+    height: 100,
+  },
+});
+
+ 
+==========================================
+FILE: \src\screens\ProfileScreen.tsx
+==========================================
+import React, { useState } from 'react';
+import {
+  View,
+  Text,
+  ScrollView,
+  StyleSheet,
+  TouchableOpacity,
+  Switch,
+  Modal,
+} from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
+import { SpeakerIcon } from '../components/SpeakerIcon';
+import { useVoice } from '../context/VoiceContext';
+import Slider from '@react-native-community/slider';
+
+export function ProfileScreen() {
+  const {
+    textSize,
+    setTextSize,
+    highContrast,
+    setHighContrast,
+    audioFirstMode,
+    setAudioFirstMode,
+    voices,
+    selectedVoice,
+    setSelectedVoice,
+  } = useVoice();
+
+  const [showRecordModal, setShowRecordModal] = useState(false);
+  const [isRecording, setIsRecording] = useState(false);
+
+  const narrators = voices.filter(v => v.type === 'narrator');
+  const clonedVoices = voices.filter(v => v.type === 'clone');
+
+  return (
+    <ScrollView style={styles.container} showsVerticalScrollIndicator={false}>
+      {/* Header */}
+      <View style={styles.header}>
+        <View style={styles.profileInfo}>
+          <View style={styles.avatar}>
+            <Text style={styles.avatarText}>JD</Text>
+          </View>
+          <View style={styles.profileText}>
+            <View style={styles.nameRow}>
+              <Text style={[styles.userName, { fontSize: textSize + 4 }]}>John Doe</Text>
+              <SpeakerIcon text="John Doe" color="#F5E6D3" />
+            </View>
+            <View style={styles.taglineRow}>
+              <Text style={styles.tagline}>Seeking wisdom in the Word</Text>
+              <SpeakerIcon text="Seeking wisdom in the Word" color="#D4C4B0" size={14} />
+            </View>
+          </View>
+        </View>
+      </View>
+
+      {/* Voice & Audio Section */}
+      <View style={styles.section}>
+        <View style={styles.sectionHeader}>
+          <Ionicons name="volume-high" size={22} color="#6B4EFF" />
+          <Text style={[styles.sectionTitle, { fontSize: textSize + 2 }]}>Voice & Audio</Text>
+          <SpeakerIcon text="Voice and audio settings. Choose your preferred voice for reading." />
+        </View>
+
+        <View style={styles.card}>
+          <View style={styles.descRow}>
+            <Text style={[styles.description, { fontSize: textSize - 1 }]}>
+              Choose how the Bible and all text is read aloud. Use your own cloned voice,
+              upload a voice sample, or select from our narrator voices.
+            </Text>
+            <SpeakerIcon
+              text="Choose how the Bible and all text is read aloud. Use your own cloned voice, upload a voice sample, or select from our narrator voices."
+              size={16}
+            />
+          </View>
+
+          {/* Narrator Voices */}
+          <Text style={styles.subsectionTitle}>Narrator Voices</Text>
+          {narrators.map((voice) => (
+            <TouchableOpacity
+              key={voice.id}
+              style={[
+                styles.voiceOption,
+                selectedVoice.id === voice.id && styles.selectedVoice,
+              ]}
+              onPress={() => setSelectedVoice(voice)}
+            >
+              <View style={styles.radioOuter}>
+                {selectedVoice.id === voice.id && <View style={styles.radioInner} />}
+              </View>
+              <View style={styles.voiceInfo}>
+                <Text style={[styles.voiceName, { fontSize: textSize }]}>{voice.name}</Text>
+                <Text style={styles.voiceDesc}>{voice.description}</Text>
+              </View>
+              <SpeakerIcon text={`${voice.name}. ${voice.description}`} size={16} />
+            </TouchableOpacity>
+          ))}
+
+          {/* Cloned Voices */}
+          {clonedVoices.length > 0 && (
+            <>
+              <Text style={styles.subsectionTitle}>Your Cloned Voices</Text>
+              {clonedVoices.map((voice) => (
+                <TouchableOpacity
+                  key={voice.id}
+                  style={[
+                    styles.voiceOption,
+                    selectedVoice.id === voice.id && styles.selectedVoice,
+                  ]}
+                  onPress={() => setSelectedVoice(voice)}
+                >
+                  <View style={styles.radioOuter}>
+                    {selectedVoice.id === voice.id && <View style={styles.radioInner} />}
+                  </View>
+                  <View style={styles.voiceInfo}>
+                    <Text style={[styles.voiceName, { fontSize: textSize }]}>{voice.name}</Text>
+                    <Text style={styles.voiceDesc}>{voice.description}</Text>
+                  </View>
+                  <SpeakerIcon text={`Preview ${voice.name}`} size={16} />
+                </TouchableOpacity>
+              ))}
+            </>
+          )}
+
+          {/* Voice Clone Actions */}
+          <View style={styles.voiceActions}>
+            <TouchableOpacity
+              style={styles.actionButton}
+              onPress={() => setShowRecordModal(true)}
+            >
+              <Ionicons name="mic" size={20} color="#6B4EFF" />
+              <Text style={styles.actionButtonText}>Record Voice Sample</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity style={styles.actionButton}>
+              <Ionicons name="cloud-upload" size={20} color="#6B4EFF" />
+              <Text style={styles.actionButtonText}>Upload Voice Sample</Text>
+            </TouchableOpacity>
+          </View>
+
+          <View style={styles.uploadInfo}>
+            <Text style={styles.uploadInfoText}>
+              Supported formats: MP3, WAV, M4A. Minimum 30 seconds of clear speech.
+            </Text>
+            <SpeakerIcon
+              text="Supported formats: MP3, WAV, M4A. Minimum 30 seconds of clear speech."
+              size={14}
+            />
+          </View>
+        </View>
+      </View>
+
+      {/* Accessibility Section */}
+      <View style={styles.section}>
+        <View style={styles.sectionHeader}>
+          <Ionicons name="accessibility" size={22} color="#6B4EFF" />
+          <Text style={[styles.sectionTitle, { fontSize: textSize + 2 }]}>Accessibility</Text>
+          <SpeakerIcon text="Accessibility settings for easier reading and navigation" />
+        </View>
+
+        <View style={styles.card}>
+          {/* Text Size */}
+          <View style={styles.settingRow}>
+            <View style={styles.settingInfo}>
+              <Text style={[styles.settingName, { fontSize: textSize }]}>Text Size</Text>
+              <Text style={styles.settingDesc}>Adjust the size of all text</Text>
+            </View>
+            <SpeakerIcon text={`Text size is currently ${textSize}`} size={16} />
+          </View>
+          <View style={styles.sliderContainer}>
+            <Text style={styles.sliderLabel}>A</Text>
+            <View style={styles.sliderWrapper}>
+              <Slider
+                style={styles.slider}
+                minimumValue={12}
+                maximumValue={24}
+                value={textSize}
+                onValueChange={setTextSize}
+                minimumTrackTintColor="#6B4EFF"
+                maximumTrackTintColor="#E8DDD4"
+                thumbTintColor="#6B4EFF"
+              />
+            </View>
+            <Text style={[styles.sliderLabel, { fontSize: 20 }]}>A</Text>
+          </View>
+
+          {/* High Contrast */}
+          <View style={styles.settingRow}>
+            <View style={styles.settingInfo}>
+              <Text style={[styles.settingName, { fontSize: textSize }]}>High Contrast</Text>
+              <Text style={styles.settingDesc}>Increase color contrast for better visibility</Text>
+            </View>
+            <SpeakerIcon text="High contrast mode for better visibility" size={16} />
+            <Switch
+              value={highContrast}
+              onValueChange={setHighContrast}
+              trackColor={{ false: '#E8DDD4', true: '#B8A0FF' }}
+              thumbColor={highContrast ? '#6B4EFF' : '#FFFFFF'}
+            />
+          </View>
+
+          {/* Audio-First Mode */}
+          <View style={styles.settingRow}>
+            <View style={styles.settingInfo}>
+              <Text style={[styles.settingName, { fontSize: textSize }]}>Audio-First Mode</Text>
+              <Text style={styles.settingDesc}>Large text, minimal UI, voice commands</Text>
+            </View>
+            <SpeakerIcon text="Audio first mode with large text and voice commands" size={16} />
+            <Switch
+              value={audioFirstMode}
+              onValueChange={setAudioFirstMode}
+              trackColor={{ false: '#E8DDD4', true: '#B8A0FF' }}
+              thumbColor={audioFirstMode ? '#6B4EFF' : '#FFFFFF'}
+            />
+          </View>
+        </View>
+      </View>
+
+      {/* Account Section */}
+      <View style={styles.section}>
+        <View style={styles.sectionHeader}>
+          <Ionicons name="person" size={22} color="#6B4EFF" />
+          <Text style={[styles.sectionTitle, { fontSize: textSize + 2 }]}>Account</Text>
+          <SpeakerIcon text="Account and general settings" />
+        </View>
+
+        <View style={styles.card}>
+          <TouchableOpacity style={styles.menuItem}>
+            <Ionicons name="person-circle" size={22} color="#5C4A3D" />
+            <Text style={[styles.menuText, { fontSize: textSize }]}>Account Info</Text>
+            <Ionicons name="chevron-forward" size={20} color="#8B7355" />
+          </TouchableOpacity>
+
+          <TouchableOpacity style={styles.menuItem}>
+            <Ionicons name="notifications" size={22} color="#5C4A3D" />
+            <Text style={[styles.menuText, { fontSize: textSize }]}>Notifications</Text>
+            <Ionicons name="chevron-forward" size={20} color="#8B7355" />
+          </TouchableOpacity>
+
+          <TouchableOpacity style={styles.menuItem}>
+            <Ionicons name="help-circle" size={22} color="#5C4A3D" />
+            <Text style={[styles.menuText, { fontSize: textSize }]}>Help & Support</Text>
+            <Ionicons name="chevron-forward" size={20} color="#8B7355" />
+          </TouchableOpacity>
+
+          <TouchableOpacity style={styles.menuItem}>
+            <Ionicons name="information-circle" size={22} color="#5C4A3D" />
+            <Text style={[styles.menuText, { fontSize: textSize }]}>About</Text>
+            <Ionicons name="chevron-forward" size={20} color="#8B7355" />
+          </TouchableOpacity>
+        </View>
+      </View>
+
+      <View style={styles.bottomPadding} />
+
+      {/* Record Voice Modal */}
+      <Modal visible={showRecordModal} animationType="slide" transparent>
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>Record Voice Sample</Text>
+              <TouchableOpacity onPress={() => setShowRecordModal(false)}>
+                <Ionicons name="close" size={24} color="#2D1810" />
+              </TouchableOpacity>
+            </View>
+
+            <View style={styles.recordInstructions}>
+              <Text style={styles.instructionText}>
+                Read the following passage clearly and naturally. Speak for at least 30 seconds
+                to create a quality voice clone.
+              </Text>
+              <SpeakerIcon
+                text="Read the following passage clearly and naturally. Speak for at least 30 seconds to create a quality voice clone."
+              />
+            </View>
+
+            <View style={styles.sampleText}>
+              <Text style={styles.sampleTextContent}>
+                "For God so loved the world that he gave his one and only Son, that whoever
+                believes in him shall not perish but have eternal life."
+              </Text>
+            </View>
+
+            <View style={styles.recordControls}>
+              <TouchableOpacity
+                style={[styles.recordButton, isRecording && styles.recordingActive]}
+                onPress={() => setIsRecording(!isRecording)}
+              >
+                <Ionicons
+                  name={isRecording ? 'stop' : 'mic'}
+                  size={32}
+                  color="#FFFFFF"
+                />
+              </TouchableOpacity>
+              <Text style={styles.recordTimer}>
+                {isRecording ? '00:15' : 'Tap to start'}
+              </Text>
+            </View>
+
+            {isRecording && (
+              <View style={styles.waveform}>
+                <Text style={styles.waveformPlaceholder}>ðŸŽµ Recording...</Text>
+              </View>
+            )}
+          </View>
+        </View>
+      </Modal>
+    </ScrollView>
+  );
+}
+
+const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+    backgroundColor: '#FAF7F2',
+  },
+  header: {
+    padding: 24,
+    paddingTop: 60,
+    backgroundColor: '#2D1810',
+  },
+  profileInfo: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  avatar: {
+    width: 70,
+    height: 70,
+    borderRadius: 35,
+    backgroundColor: '#6B4EFF',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  avatarText: {
+    color: '#FFFFFF',
+    fontSize: 26,
+    fontWeight: '600',
+  },
+  profileText: {
+    marginLeft: 16,
+    flex: 1,
+  },
+  nameRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  userName: {
+    fontFamily: 'serif',
+    fontWeight: 'bold',
+    color: '#F5E6D3',
+  },
+  taglineRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 4,
+  },
+  tagline: {
+    color: '#D4C4B0',
+    fontSize: 14,
+  },
+  section: {
+    padding: 16,
+    paddingBottom: 0,
+  },
+  sectionHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  sectionTitle: {
+    fontFamily: 'serif',
+    fontWeight: '600',
+    color: '#2D1810',
+    marginLeft: 8,
+    flex: 1,
+  },
+  card: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 16,
+    padding: 20,
+  },
+  descRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    marginBottom: 20,
+  },
+  description: {
+    color: '#5C4A3D',
+    flex: 1,
+    lineHeight: 22,
+  },
+  subsectionTitle: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#8B7355',
+    marginTop: 16,
+    marginBottom: 12,
+    textTransform: 'uppercase',
+    letterSpacing: 1,
+  },
+  voiceOption: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 12,
+    paddingHorizontal: 12,
+    borderRadius: 10,
+    marginBottom: 8,
+  },
+  selectedVoice: {
+    backgroundColor: '#F0EBFF',
+  },
+  radioOuter: {
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    borderWidth: 2,
+    borderColor: '#6B4EFF',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  radioInner: {
+    width: 12,
+    height: 12,
+    borderRadius: 6,
+    backgroundColor: '#6B4EFF',
+  },
+  voiceInfo: {
+    flex: 1,
+    marginLeft: 12,
+  },
+  voiceName: {
+    fontWeight: '600',
+    color: '#2D1810',
+  },
+  voiceDesc: {
+    fontSize: 13,
+    color: '#8B7355',
+    marginTop: 2,
+  },
+  voiceActions: {
+    marginTop: 20,
+    gap: 12,
+  },
+  actionButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 14,
+    borderWidth: 1,
+    borderColor: '#6B4EFF',
+    borderRadius: 10,
+  },
+  actionButtonText: {
+    color: '#6B4EFF',
+    fontWeight: '600',
+    marginLeft: 8,
+  },
+  uploadInfo: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 16,
+    padding: 12,
+    backgroundColor: '#F5F0EA',
+    borderRadius: 8,
+  },
+  uploadInfoText: {
+    flex: 1,
+    fontSize: 13,
+    color: '#8B7355',
+  },
+  settingRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: '#F0E6D8',
+  },
+  settingInfo: {
+    flex: 1,
+  },
+  settingName: {
+    fontWeight: '600',
+    color: '#2D1810',
+  },
+  settingDesc: {
+    fontSize: 13,
+    color: '#8B7355',
+    marginTop: 2,
+  },
+  sliderContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: '#F0E6D8',
+  },
+  sliderLabel: {
+    fontSize: 14,
+    color: '#5C4A3D',
+    width: 24,
+    textAlign: 'center',
+  },
+  sliderWrapper: {
+    flex: 1,
+    marginHorizontal: 12,
+  },
+  slider: {
+    width: '100%',
+    height: 40,
+  },
+  menuItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: '#F0E6D8',
+  },
+  menuText: {
+    flex: 1,
+    marginLeft: 12,
+    color: '#2D1810',
+  },
+  bottomPadding: {
+    height: 120,
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    justifyContent: 'flex-end',
+  },
+  modalContent: {
+    backgroundColor: '#FFFFFF',
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    padding: 24,
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 20,
+  },
+  modalTitle: {
+    fontSize: 20,
+    fontFamily: 'serif',
+    fontWeight: '600',
+    color: '#2D1810',
+  },
+  recordInstructions: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    marginBottom: 20,
+  },
+  instructionText: {
+    flex: 1,
+    fontSize: 15,
+    color: '#5C4A3D',
+    lineHeight: 22,
+  },
+  sampleText: {
+    backgroundColor: '#F5F0EA',
+    borderRadius: 12,
+    padding: 16,
+    marginBottom: 24,
+  },
+  sampleTextContent: {
+    fontSize: 16,
+    color: '#2D1810',
+    fontStyle: 'italic',
+    lineHeight: 24,
+  },
+  recordControls: {
+    alignItems: 'center',
+    marginBottom: 20,
+  },
+  recordButton: {
+    width: 80,
+    height: 80,
+    borderRadius: 40,
+    backgroundColor: '#6B4EFF',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 12,
+  },
+  recordingActive: {
+    backgroundColor: '#E53935',
+  },
+  recordTimer: {
+    fontSize: 16,
+    color: '#5C4A3D',
+    fontWeight: '500',
+  },
+  waveform: {
+    height: 60,
+    backgroundColor: '#F5F0EA',
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  waveformPlaceholder: {
+    fontSize: 16,
+    color: '#6B4EFF',
+  },
+});
+
+ 
+==========================================
+FILE: \src\screens\StudyRoomDetailScreen.tsx
+==========================================
+import React, { useState } from 'react';
+import {
+  View,
+  Text,
+  ScrollView,
+  StyleSheet,
+  TouchableOpacity,
+  TextInput,
+  KeyboardAvoidingView,
+  Platform,
+} from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
+import { SpeakerIcon } from '../components/SpeakerIcon';
+import { DualColumnBible } from '../components/DualColumnBible';
+import { john3Verses } from '../data/sampleBible';
+import { useVoice } from '../context/VoiceContext';
+
+const aiNotes = [
+  {
+    id: '1',
+    text: 'The phrase "born again" (Î³ÎµÎ½Î½Î·Î¸á¿‡ á¼„Î½Ï‰Î¸ÎµÎ½) can also mean "born from above," emphasizing the divine origin of spiritual rebirth.',
+  },
+  {
+    id: '2',
+    text: 'Nicodemus was a Pharisee and member of the Sanhedrin, representing the religious elite seeking truth.',
+  },
+  {
+    id: '3',
+    text: 'Consider: What does it mean to be "born of water and Spirit"? How does this relate to baptism and renewal?',
+  },
+];
+
+const chatMessages = [
+  { id: '1', sender: 'Sarah', text: 'The Greek word for "again" is so rich in meaning!', isOwn: false },
+  { id: '2', sender: 'You', text: 'Yes, the dual meaning really adds depth.', isOwn: true },
+  { id: '3', sender: 'Michael', text: 'Let\'s discuss verse 16 next.', isOwn: false },
+];
+
+export function StudyRoomDetailScreen({ navigation, route }: any) {
+  const [message, setMessage] = useState('');
+  const { textSize } = useVoice();
+  const room = route?.params?.room || { name: 'Romans Deep Study', host: 'Pastor Michael', participants: 12 };
+
+  return (
+    <KeyboardAvoidingView
+      style={styles.container}
+      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+    >
+      <ScrollView style={styles.scrollView} showsVerticalScrollIndicator={false}>
+        {/* Room Header */}
+        <View style={styles.header}>
+          <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
+            <Ionicons name="arrow-back" size={24} color="#F5E6D3" />
+          </TouchableOpacity>
+          <View style={styles.headerContent}>
+            <View style={styles.titleRow}>
+              <Text style={[styles.roomTitle, { fontSize: textSize + 4 }]}>{room.name}</Text>
+              <SpeakerIcon text={room.name} color="#F5E6D3" />
+            </View>
+            <View style={styles.metaRow}>
+              <Text style={styles.roomMeta}>
+                Hosted by {room.host || 'Pastor Michael'} â€¢ {room.participants || 12} participants
+              </Text>
+              <SpeakerIcon
+                text={`Hosted by ${room.host || 'Pastor Michael'}, ${room.participants || 12} participants`}
+                color="#D4C4B0"
+                size={14}
+              />
+            </View>
+          </View>
+          <TouchableOpacity style={styles.leaveButton}>
+            <Text style={styles.leaveButtonText}>Leave</Text>
+          </TouchableOpacity>
+        </View>
+
+        {/* Scripture Panel */}
+        <View style={styles.section}>
+          <DualColumnBible
+            verses={john3Verses}
+            reference="John 3:16-19"
+            showPerVerseSpeakers={true}
+          />
+        </View>
+
+        {/* AI Study Guide */}
+        <View style={styles.section}>
+          <View style={styles.sectionHeader}>
+            <Ionicons name="sparkles" size={20} color="#6B4EFF" />
+            <Text style={[styles.sectionTitle, { fontSize: textSize }]}>AI Study Guide</Text>
+            <SpeakerIcon text="AI Study Guide with insights and questions" />
+          </View>
+          <View style={styles.aiContent}>
+            {aiNotes.map((note) => (
+              <View key={note.id} style={styles.aiNote}>
+                <Text style={[styles.aiNoteText, { fontSize: textSize - 1 }]}>{note.text}</Text>
+                <SpeakerIcon text={note.text} size={16} />
+              </View>
+            ))}
+            <TouchableOpacity style={styles.askAiButton}>
+              <Ionicons name="chatbubble-ellipses" size={18} color="#6B4EFF" />
+              <Text style={styles.askAiText}>Ask AI</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+
+        {/* Group Chat */}
+        <View style={styles.section}>
+          <View style={styles.sectionHeader}>
+            <Ionicons name="chatbubbles" size={20} color="#6B4EFF" />
+            <Text style={[styles.sectionTitle, { fontSize: textSize }]}>Group Chat</Text>
+            <SpeakerIcon text="Group chat messages" />
+          </View>
+          <View style={styles.chatContent}>
+            {chatMessages.map((msg) => (
+              <View
+                key={msg.id}
+                style={[styles.chatBubble, msg.isOwn && styles.ownBubble]}
+              >
+                {!msg.isOwn && <Text style={styles.senderName}>{msg.sender}</Text>}
+                <View style={styles.messageRow}>
+                  <Text style={[styles.messageText, { fontSize: textSize - 1 }]}>{msg.text}</Text>
+                  <SpeakerIcon text={`${msg.sender} says: ${msg.text}`} size={14} />
+                </View>
+              </View>
+            ))}
+          </View>
+        </View>
+
+        <View style={styles.bottomPadding} />
+      </ScrollView>
+
+      {/* Chat Input */}
+      <View style={styles.inputContainer}>
+        <TextInput
+          style={styles.textInput}
+          placeholder="Type a message..."
+          placeholderTextColor="#8B7355"
+          value={message}
+          onChangeText={setMessage}
+        />
+        <TouchableOpacity style={styles.micButton}>
+          <Ionicons name="mic" size={22} color="#6B4EFF" />
+        </TouchableOpacity>
+        <TouchableOpacity style={styles.sendButton}>
+          <Ionicons name="send" size={20} color="#FFFFFF" />
+        </TouchableOpacity>
+      </View>
+    </KeyboardAvoidingView>
+  );
+}
+
+const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+    backgroundColor: '#FAF7F2',
+  },
+  scrollView: {
+    flex: 1,
+  },
+  header: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 16,
+    paddingTop: 60,
+    backgroundColor: '#2D1810',
+  },
+  backButton: {
+    padding: 8,
+  },
+  headerContent: {
+    flex: 1,
+    marginLeft: 8,
+  },
+  titleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  roomTitle: {
+    fontFamily: 'serif',
+    fontWeight: 'bold',
+    color: '#F5E6D3',
+    flex: 1,
+  },
+  metaRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 4,
+  },
+  roomMeta: {
+    color: '#D4C4B0',
+    fontSize: 13,
+  },
+  leaveButton: {
+    paddingVertical: 6,
+    paddingHorizontal: 12,
+    borderWidth: 1,
+    borderColor: '#D4C4B0',
+    borderRadius: 6,
+  },
+  leaveButtonText: {
+    color: '#D4C4B0',
+    fontSize: 13,
+  },
+  section: {
+    margin: 16,
+    marginBottom: 8,
+  },
+  sectionHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  sectionTitle: {
+    fontFamily: 'serif',
+    fontWeight: '600',
+    color: '#2D1810',
+    marginLeft: 8,
+    flex: 1,
+  },
+  aiContent: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 12,
+    padding: 16,
+  },
+  aiNote: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    marginBottom: 16,
+    paddingBottom: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: '#F0E6D8',
+  },
+  aiNoteText: {
+    color: '#2D1810',
+    flex: 1,
+    lineHeight: 22,
+  },
+  askAiButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 12,
+    borderWidth: 1,
+    borderColor: '#6B4EFF',
+    borderRadius: 8,
+  },
+  askAiText: {
+    color: '#6B4EFF',
+    fontWeight: '600',
+    marginLeft: 8,
+  },
+  chatContent: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 12,
+    padding: 16,
+  },
+  chatBubble: {
+    backgroundColor: '#F0E6D8',
+    borderRadius: 12,
+    padding: 12,
+    marginBottom: 12,
+    maxWidth: '85%',
+  },
+  ownBubble: {
+    backgroundColor: '#E8E0FF',
+    alignSelf: 'flex-end',
+  },
+  senderName: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#6B4EFF',
+    marginBottom: 4,
+  },
+  messageRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+  },
+  messageText: {
+    color: '#2D1810',
+    flex: 1,
+  },
+  inputContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 12,
+    paddingBottom: 30,
+    backgroundColor: '#FFFFFF',
+    borderTopWidth: 1,
+    borderTopColor: '#E8DDD4',
+  },
+  textInput: {
+    flex: 1,
+    backgroundColor: '#F5F0EA',
+    borderRadius: 24,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    fontSize: 15,
+    color: '#2D1810',
+  },
+  micButton: {
+    padding: 10,
+    marginLeft: 8,
+  },
+  sendButton: {
+    backgroundColor: '#6B4EFF',
+    padding: 12,
+    borderRadius: 24,
+    marginLeft: 4,
+  },
+  bottomPadding: {
+    height: 20,
+  },
+});
+
+ 
+==========================================
+FILE: \src\screens\StudyRoomsScreen.tsx
+==========================================
+import React, { useState } from 'react';
+import {
+  View,
+  Text,
+  ScrollView,
+  StyleSheet,
+  TouchableOpacity,
+} from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
+import { SpeakerIcon } from '../components/SpeakerIcon';
+import { useVoice } from '../context/VoiceContext';
+
+const tabs = ['My Rooms', 'Public Rooms', 'Invites'];
+
+const rooms = [
+  {
+    id: '1',
+    name: 'Romans Deep Study',
+    description: 'Verse-by-verse study of Paul\'s letter to the Romans',
+    participants: 12,
+    schedule: 'Tuesdays 7PM',
+    tab: 'My Rooms',
+  },
+  {
+    id: '2',
+    name: 'Hebrew Beginners',
+    description: 'Learn to read the Old Testament in its original language',
+    participants: 8,
+    schedule: 'Mondays 10AM',
+    tab: 'My Rooms',
+  },
+  {
+    id: '3',
+    name: 'Psalms Prayer Group',
+    description: 'Praying through the Psalms together',
+    participants: 25,
+    schedule: 'Daily 6AM',
+    tab: 'Public Rooms',
+  },
+  {
+    id: '4',
+    name: 'Greek New Testament',
+    description: 'Advanced study of Koine Greek texts',
+    participants: 6,
+    schedule: 'Thursdays 8PM',
+    tab: 'Public Rooms',
+  },
+  {
+    id: '5',
+    name: 'Women\'s Bible Study',
+    description: 'You\'ve been invited by Sarah',
+    participants: 15,
+    schedule: 'Wednesdays 2PM',
+    tab: 'Invites',
+  },
+];
+
+export function StudyRoomsScreen({ navigation }: any) {
+  const [activeTab, setActiveTab] = useState('My Rooms');
+  const { textSize } = useVoice();
+
+  const filteredRooms = rooms.filter((room) => room.tab === activeTab);
+
+  return (
+    <View style={styles.container}>
+      {/* Header */}
+      <View style={styles.header}>
+        <View style={styles.titleRow}>
+          <Text style={[styles.title, { fontSize: textSize + 6 }]}>Study Rooms</Text>
+          <SpeakerIcon text="Study Rooms. Join or create collaborative Bible study sessions." color="#F5E6D3" />
+        </View>
+      </View>
+
+      {/* Tabs */}
+      <View style={styles.tabsContainer}>
+        {tabs.map((tab) => (
+          <TouchableOpacity
+            key={tab}
+            style={[styles.tab, activeTab === tab && styles.activeTab]}
+            onPress={() => setActiveTab(tab)}
+          >
+            <Text style={[styles.tabText, activeTab === tab && styles.activeTabText]}>
+              {tab}
+            </Text>
+          </TouchableOpacity>
+        ))}
+      </View>
+
+      {/* Room Cards */}
+      <ScrollView style={styles.roomsList} showsVerticalScrollIndicator={false}>
+        {filteredRooms.map((room) => (
+          <View key={room.id} style={styles.roomCard}>
+            <View style={styles.roomHeader}>
+              <Text style={[styles.roomName, { fontSize: textSize }]}>{room.name}</Text>
+              <SpeakerIcon text={room.name} size={18} />
+            </View>
+            <View style={styles.descRow}>
+              <Text style={[styles.roomDescription, { fontSize: textSize - 2 }]}>
+                {room.description}
+              </Text>
+              <SpeakerIcon text={room.description} size={14} />
+            </View>
+            <View style={styles.infoRow}>
+              <View style={styles.infoItem}>
+                <Ionicons name="people" size={16} color="#8B7355" />
+                <Text style={styles.infoText}>{room.participants} members</Text>
+              </View>
+              <View style={styles.infoItem}>
+                <Ionicons name="calendar" size={16} color="#8B7355" />
+                <Text style={styles.infoText}>{room.schedule}</Text>
+              </View>
+              <SpeakerIcon
+                text={`${room.participants} members, meets ${room.schedule}`}
+                size={14}
+              />
+            </View>
+            <TouchableOpacity
+              style={styles.enterButton}
+              onPress={() => navigation.navigate('StudyRoomDetail', { room })}
+            >
+              <Text style={styles.enterButtonText}>
+                {activeTab === 'Invites' ? 'Accept & Join' : 'Enter Room'}
+              </Text>
+            </TouchableOpacity>
+          </View>
+        ))}
+        <View style={styles.bottomPadding} />
+      </ScrollView>
+
+      {/* FAB */}
+      <TouchableOpacity style={styles.fab}>
+        <Ionicons name="add" size={24} color="#FFFFFF" />
+        <Text style={styles.fabText}>Create Room</Text>
+      </TouchableOpacity>
+    </View>
+  );
+}
+
+const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+    backgroundColor: '#FAF7F2',
+  },
+  header: {
+    padding: 24,
+    paddingTop: 60,
+    backgroundColor: '#2D1810',
+  },
+  titleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  title: {
+    fontFamily: 'serif',
+    fontWeight: 'bold',
+    color: '#F5E6D3',
+  },
+  tabsContainer: {
+    flexDirection: 'row',
+    backgroundColor: '#FFFFFF',
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderBottomWidth: 1,
+    borderBottomColor: '#E8DDD4',
+  },
+  tab: {
+    paddingVertical: 10,
+    paddingHorizontal: 16,
+    marginRight: 8,
+    borderRadius: 20,
+  },
+  activeTab: {
+    backgroundColor: '#6B4EFF',
+  },
+  tabText: {
+    fontSize: 14,
+    color: '#5C4A3D',
+    fontWeight: '500',
+  },
+  activeTabText: {
+    color: '#FFFFFF',
+  },
+  roomsList: {
+    flex: 1,
+    padding: 16,
+  },
+  roomCard: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 16,
+    padding: 20,
+    marginBottom: 16,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.06,
+    shadowRadius: 8,
+    elevation: 2,
+  },
+  roomHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  roomName: {
+    fontFamily: 'serif',
+    fontWeight: '600',
+    color: '#2D1810',
+    flex: 1,
+  },
+  descRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    marginBottom: 12,
+  },
+  roomDescription: {
+    color: '#5C4A3D',
+    flex: 1,
+    lineHeight: 20,
+  },
+  infoRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 16,
+    flexWrap: 'wrap',
+  },
+  infoItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginRight: 16,
+  },
+  infoText: {
+    marginLeft: 4,
+    fontSize: 13,
+    color: '#8B7355',
+  },
+  enterButton: {
+    backgroundColor: '#6B4EFF',
+    paddingVertical: 12,
+    borderRadius: 10,
+    alignItems: 'center',
+  },
+  enterButtonText: {
+    color: '#FFFFFF',
+    fontWeight: '600',
+    fontSize: 15,
+  },
+  fab: {
+    position: 'absolute',
+    bottom: 100,
+    right: 20,
+    backgroundColor: '#6B4EFF',
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 14,
+    paddingHorizontal: 20,
+    borderRadius: 30,
+    shadowColor: '#6B4EFF',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 5,
+  },
+  fabText: {
+    color: '#FFFFFF',
+    fontWeight: '600',
+    marginLeft: 8,
+  },
+  bottomPadding: {
+    height: 180,
+  },
+});
+
+ 
+==========================================
+FILE: \src\services\bibleApi.ts
+==========================================
+import { BibleVerse } from '../types';
+
+// API.Bible configuration (optional - for 2000+ translations)
+// Get your free key at: https://scripture.api.bible
+const API_BIBLE_KEY = ''; // Add your key here for additional translations
+
+// Bible version IDs for API.Bible
+const API_BIBLE_VERSIONS = {
+  kjv: 'de4e12af7f28f599-02',
+  greek: '5ae182e5ee4b56e6-01', // Nestle 1904
+  hebrew: 'bba9f40116a4b06a-01', // Westminster Leningrad Codex
+};
+
+// Book abbreviation mappings for different APIs
+const GETBIBLE_BOOK_MAP: Record<string, string> = {
+  'Genesis': '1', 'Exodus': '2', 'Leviticus': '3', 'Numbers': '4', 'Deuteronomy': '5',
+  'Joshua': '6', 'Judges': '7', 'Ruth': '8', '1 Samuel': '9', '2 Samuel': '10',
+  '1 Kings': '11', '2 Kings': '12', '1 Chronicles': '13', '2 Chronicles': '14',
+  'Ezra': '15', 'Nehemiah': '16', 'Esther': '17', 'Job': '18', 'Psalms': '19',
+  'Proverbs': '20', 'Ecclesiastes': '21', 'Song of Solomon': '22', 'Isaiah': '23',
+  'Jeremiah': '24', 'Lamentations': '25', 'Ezekiel': '26', 'Daniel': '27',
+  'Hosea': '28', 'Joel': '29', 'Amos': '30', 'Obadiah': '31', 'Jonah': '32',
+  'Micah': '33', 'Nahum': '34', 'Habakkuk': '35', 'Zephaniah': '36', 'Haggai': '37',
+  'Zechariah': '38', 'Malachi': '39', 'Matthew': '40', 'Mark': '41', 'Luke': '42',
+  'John': '43', 'Acts': '44', 'Romans': '45', '1 Corinthians': '46', '2 Corinthians': '47',
+  'Galatians': '48', 'Ephesians': '49', 'Philippians': '50', 'Colossians': '51',
+  '1 Thessalonians': '52', '2 Thessalonians': '53', '1 Timothy': '54', '2 Timothy': '55',
+  'Titus': '56', 'Philemon': '57', 'Hebrews': '58', 'James': '59', '1 Peter': '60',
+  '2 Peter': '61', '1 John': '62', '2 John': '63', '3 John': '64', 'Jude': '65',
+  'Revelation': '66',
+};
+
+// Bolls.life book abbreviations
+const BOLLS_BOOK_MAP: Record<string, string> = {
+  'Genesis': 'Gen', 'Exodus': 'Exod', 'Leviticus': 'Lev', 'Numbers': 'Num',
+  'Deuteronomy': 'Deut', 'Joshua': 'Josh', 'Judges': 'Judg', 'Ruth': 'Ruth',
+  '1 Samuel': '1Sam', '2 Samuel': '2Sam', '1 Kings': '1Kgs', '2 Kings': '2Kgs',
+  '1 Chronicles': '1Chr', '2 Chronicles': '2Chr', 'Ezra': 'Ezra', 'Nehemiah': 'Neh',
+  'Esther': 'Esth', 'Job': 'Job', 'Psalms': 'Ps', 'Proverbs': 'Prov',
+  'Ecclesiastes': 'Eccl', 'Song of Solomon': 'Song', 'Isaiah': 'Isa', 'Jeremiah': 'Jer',
+  'Lamentations': 'Lam', 'Ezekiel': 'Ezek', 'Daniel': 'Dan', 'Hosea': 'Hos',
+  'Joel': 'Joel', 'Amos': 'Amos', 'Obadiah': 'Obad', 'Jonah': 'Jonah', 'Micah': 'Mic',
+  'Nahum': 'Nah', 'Habakkuk': 'Hab', 'Zephaniah': 'Zeph', 'Haggai': 'Hag',
+  'Zechariah': 'Zech', 'Malachi': 'Mal', 'Matthew': 'Matt', 'Mark': 'Mark',
+  'Luke': 'Luke', 'John': 'John', 'Acts': 'Acts', 'Romans': 'Rom',
+  '1 Corinthians': '1Cor', '2 Corinthians': '2Cor', 'Galatians': 'Gal',
+  'Ephesians': 'Eph', 'Philippians': 'Phil', 'Colossians': 'Col',
+  '1 Thessalonians': '1Thess', '2 Thessalonians': '2Thess', '1 Timothy': '1Tim',
+  '2 Timothy': '2Tim', 'Titus': 'Titus', 'Philemon': 'Phlm', 'Hebrews': 'Heb',
+  'James': 'Jas', '1 Peter': '1Pet', '2 Peter': '2Pet', '1 John': '1John',
+  '2 John': '2John', '3 John': '3John', 'Jude': 'Jude', 'Revelation': 'Rev',
+};
+
+// Cache for API responses
+const cache: Map<string, BibleVerse[]> = new Map();
+
+/**
+ * Fetch from GetBible.net API (free, no key needed)
+ * Supports: KJV, ASV, WEB, YLT, and more
+ */
+export async function fetchFromGetBible(
+  translation: string,
+  bookNumber: string,
+  chapter: number
+): Promise<any> {
+  const cacheKey = `getbible-${translation}-${bookNumber}-${chapter}`;
+  
+  try {
+    const response = await fetch(
+      `https://getbible.net/v2/${translation}/${bookNumber}/${chapter}.json`,
+      {
+        headers: { 'Accept': 'application/json' },
+      }
+    );
+    
+    if (!response.ok) {
+      console.warn(`GetBible API returned ${response.status}`);
+      return null;
+    }
+    
+    const data = await response.json();
+    return data;
+  } catch (error) {
+    console.error('GetBible API error:', error);
+    return null;
+  }
+}
+
+/**
+ * Fetch Greek NT from Bolls.life API (Tischendorf text)
+ * Free, no key needed
+ */
+export async function fetchGreekNT(
+  bookAbbrev: string,
+  chapter: number
+): Promise<any[]> {
+  try {
+    const response = await fetch(
+      `https://bolls.life/api/get-chapter/TISCH/${bookAbbrev}/${chapter}/`,
+      {
+        headers: { 'Accept': 'application/json' },
+      }
+    );
+    
+    if (!response.ok) {
+      console.warn(`Bolls.life Greek API returned ${response.status}`);
+      return [];
+    }
+    
+    return await response.json();
+  } catch (error) {
+    console.error('Bolls.life Greek API error:', error);
+    return [];
+  }
+}
+
+/**
+ * Fetch Hebrew OT from Bolls.life API (Westminster Leningrad Codex)
+ * Free, no key needed
+ */
+export async function fetchHebrewOT(
+  bookAbbrev: string,
+  chapter: number
+): Promise<any[]> {
+  try {
+    const response = await fetch(
+      `https://bolls.life/api/get-chapter/WLC/${bookAbbrev}/${chapter}/`,
+      {
+        headers: { 'Accept': 'application/json' },
+      }
+    );
+    
+    if (!response.ok) {
+      console.warn(`Bolls.life Hebrew API returned ${response.status}`);
+      return [];
+    }
+    
+    return await response.json();
+  } catch (error) {
+    console.error('Bolls.life Hebrew API error:', error);
+    return [];
+  }
+}
+
+/**
+ * Fetch interlinear data with word-by-word breakdown
+ * Uses Bolls.life interlinear endpoint
+ */
+export async function fetchInterlinear(
+  bookAbbrev: string,
+  chapter: number,
+  isOT: boolean
+): Promise<any[]> {
+  try {
+    const translation = isOT ? 'WLCI' : 'TISCH'; // Interlinear versions
+    const response = await fetch(
+      `https://bolls.life/api/get-chapter/${translation}/${bookAbbrev}/${chapter}/`,
+      {
+        headers: { 'Accept': 'application/json' },
+      }
+    );
+    
+    if (!response.ok) return [];
+    return await response.json();
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * Main function to fetch Bible passage with both English and original language
+ */
+export async function fetchBiblePassage(
+  bookName: string,
+  chapter: number,
+  isOT: boolean
+): Promise<BibleVerse[]> {
+  const cacheKey = `passage-${bookName}-${chapter}`;
+  
+  if (cache.has(cacheKey)) {
+    return cache.get(cacheKey)!;
+  }
+  
+  try {
+    const getBibleBook = GETBIBLE_BOOK_MAP[bookName] || bookName;
+    const bollsBook = BOLLS_BOOK_MAP[bookName] || bookName;
+    
+    // Fetch English (KJV) and original language in parallel
+    const [kjvData, originalData] = await Promise.all([
+      fetchFromGetBible('kjv', getBibleBook, chapter),
+      isOT ? fetchHebrewOT(bollsBook, chapter) : fetchGreekNT(bollsBook, chapter),
+    ]);
+    
+    if (!kjvData?.verses || kjvData.verses.length === 0) {
+      console.warn('No verses returned from GetBible');
+      return getFallbackVerses(bookName, chapter, isOT);
+    }
+    
+    const verses: BibleVerse[] = kjvData.verses.map((v: any, index: number) => ({
+      number: v.verse || index + 1,
+      englishText: cleanText(v.text),
+      originalText: originalData?.[index]?.text || getPlaceholderOriginal(bookName, chapter, v.verse, isOT),
+      transliteration: originalData?.[index]?.transliteration || '',
+      strongsNumbers: originalData?.[index]?.strongs || [],
+      language: isOT ? 'hebrew' : 'greek',
+    }));
+    
+    cache.set(cacheKey, verses);
+    return verses;
+  } catch (error) {
+    console.error('Error fetching Bible passage:', error);
+    return getFallbackVerses(bookName, chapter, isOT);
+  }
+}
+
+/**
+ * Fetch from API.Bible (requires API key for 2000+ translations)
+ */
+export async function fetchFromApiBible(
+  bibleId: string,
+  passageId: string
+): Promise<any> {
+  if (!API_BIBLE_KEY) {
+    console.warn('API.Bible key not configured');
+    return null;
+  }
+  
+  try {
+    const response = await fetch(
+      `https://api.scripture.bible/v1/bibles/${bibleId}/passages/${passageId}?content-type=text`,
+      {
+        headers: {
+          'api-key': API_BIBLE_KEY,
+          'Accept': 'application/json',
+        },
+      }
+    );
+    
+    if (!response.ok) return null;
+    return await response.json();
+  } catch {
+    return null;
+  }
+}
+
+// Helper functions
+function cleanText(text: string): string {
+  return text
+    .replace(/\[.*?\]/g, '') // Remove bracketed content
+    .replace(/\s+/g, ' ')    // Normalize whitespace
+    .trim();
+}
+
+function getPlaceholderOriginal(book: string, chapter: number, verse: number, isOT: boolean): string {
+  if (isOT) {
+    return `[×¢×‘×¨×™×ª - ${book} ${chapter}:${verse}]`;
+  }
+  return `[á¼™Î»Î»Î·Î½Î¹ÎºÎ¬ - ${book} ${chapter}:${verse}]`;
+}
+
+function getFallbackVerses(book: string, chapter: number, isOT: boolean): BibleVerse[] {
+  return Array.from({ length: 5 }, (_, i) => ({
+    number: i + 1,
+    englishText: `${book} ${chapter}:${i + 1} - Unable to load. Check your internet connection.`,
+    originalText: getPlaceholderOriginal(book, chapter, i + 1, isOT),
+    language: isOT ? 'hebrew' : 'greek',
+  }));
+}
+
+// Export book mappings for use in other components
+export { GETBIBLE_BOOK_MAP, BOLLS_BOOK_MAP, API_BIBLE_KEY };
+
+// Legacy export for backward compatibility
+export const bibleApi = {
+  fetchPassage: fetchBiblePassage,
+  fetchGreek: fetchGreekNT,
+  fetchHebrew: fetchHebrewOT,
+  fetchInterlinear,
+};
+ 
+==========================================
+FILE: \src\services\storageService.ts
+==========================================
+import AsyncStorage from '@react-native-async-storage/async-storage';
+
+// Storage keys
+const KEYS = {
+  NOTES: 'mybible_notes',
+  HIGHLIGHTS: 'mybible_highlights',
+  READING_PROGRESS: 'mybible_reading_progress',
+  VOICE_SETTINGS: 'mybible_voice_settings',
+  USER_PREFERENCES: 'mybible_preferences',
+  CLONED_VOICES: 'mybible_cloned_voices',
+  STUDY_ROOMS: 'mybible_study_rooms',
+  BOOKMARKS: 'mybible_bookmarks',
+};
+
+// Types
+export interface BibleNote {
+  id: string;
+  book: string;
+  chapter: number;
+  verse: number;
+  content: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface BibleHighlight {
+  id: string;
+  book: string;
+  chapter: number;
+  verse: number;
+  color: string;
+  createdAt: string;
+}
+
+export interface ReadingProgress {
+  lastBook: string;
+  lastChapter: number;
+  lastVerse: number;
+  timestamp: string;
+}
+
+export interface VoiceSettings {
+  selectedVoiceId: string;
+  pitch: number;
+  rate: number;
+  audioFirstMode: boolean;
+}
+
+export interface UserPreferences {
+  textSize: number;
+  highContrast: boolean;
+  theme: 'light' | 'dark';
+  defaultTranslation: string;
+}
+
+export interface ClonedVoice {
+  id: string;
+  name: string;
+  sampleUri: string;
+  createdAt: string;
+}
+
+export interface Bookmark {
+  id: string;
+  book: string;
+  chapter: number;
+  verse?: number;
+  label?: string;
+  createdAt: string;
+}
+
+// Storage Service
+class StorageService {
+  // Notes
+  async saveNote(note: BibleNote): Promise<void> {
+    const notes = await this.getNotes();
+    const existingIndex = notes.findIndex(n => n.id === note.id);
+    
+    if (existingIndex >= 0) {
+      notes[existingIndex] = { ...note, updatedAt: new Date().toISOString() };
+    } else {
+      notes.push({ ...note, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() });
+    }
+    
+    await AsyncStorage.setItem(KEYS.NOTES, JSON.stringify(notes));
+  }
+
+  async getNotes(): Promise<BibleNote[]> {
+    try {
+      const data = await AsyncStorage.getItem(KEYS.NOTES);
+      return data ? JSON.parse(data) : [];
+    } catch {
+      return [];
+    }
+  }
+
+  async getNotesForPassage(book: string, chapter: number): Promise<BibleNote[]> {
+    const notes = await this.getNotes();
+    return notes.filter(n => n.book === book && n.chapter === chapter);
+  }
+
+  async deleteNote(noteId: string): Promise<void> {
+    const notes = await this.getNotes();
+    const filtered = notes.filter(n => n.id !== noteId);
+    await AsyncStorage.setItem(KEYS.NOTES, JSON.stringify(filtered));
+  }
+
+  // Highlights
+  async saveHighlight(highlight: BibleHighlight): Promise<void> {
+    const highlights = await this.getHighlights();
+    const existingIndex = highlights.findIndex(
+      h => h.book === highlight.book && h.chapter === highlight.chapter && h.verse === highlight.verse
+    );
+    
+    if (existingIndex >= 0) {
+      highlights[existingIndex] = highlight;
+    } else {
+      highlights.push({ ...highlight, createdAt: new Date().toISOString() });
+    }
+    
+    await AsyncStorage.setItem(KEYS.HIGHLIGHTS, JSON.stringify(highlights));
+  }
+
+  async getHighlights(): Promise<BibleHighlight[]> {
+    try {
+      const data = await AsyncStorage.getItem(KEYS.HIGHLIGHTS);
+      return data ? JSON.parse(data) : [];
+    } catch {
+      return [];
+    }
+  }
+
+  async getHighlightsForPassage(book: string, chapter: number): Promise<BibleHighlight[]> {
+    const highlights = await this.getHighlights();
+    return highlights.filter(h => h.book === book && h.chapter === chapter);
+  }
+
+  async removeHighlight(book: string, chapter: number, verse: number): Promise<void> {
+    const highlights = await this.getHighlights();
+    const filtered = highlights.filter(
+      h => !(h.book === book && h.chapter === chapter && h.verse === verse)
+    );
+    await AsyncStorage.setItem(KEYS.HIGHLIGHTS, JSON.stringify(filtered));
+  }
+
+  // Reading Progress
+  async saveReadingProgress(progress: ReadingProgress): Promise<void> {
+    await AsyncStorage.setItem(KEYS.READING_PROGRESS, JSON.stringify({
+      ...progress,
+      timestamp: new Date().toISOString(),
+    }));
+  }
+
+  async getReadingProgress(): Promise<ReadingProgress | null> {
+    try {
+      const data = await AsyncStorage.getItem(KEYS.READING_PROGRESS);
+      return data ? JSON.parse(data) : null;
+    } catch {
+      return null;
+    }
+  }
+
+  // Voice Settings
+  async saveVoiceSettings(settings: VoiceSettings): Promise<void> {
+    await AsyncStorage.setItem(KEYS.VOICE_SETTINGS, JSON.stringify(settings));
+  }
+
+  async getVoiceSettings(): Promise<VoiceSettings | null> {
+    try {
+      const data = await AsyncStorage.getItem(KEYS.VOICE_SETTINGS);
+      return data ? JSON.parse(data) : null;
+    } catch {
+      return null;
+    }
+  }
+
+  // User Preferences
+  async savePreferences(prefs: UserPreferences): Promise<void> {
+    await AsyncStorage.setItem(KEYS.USER_PREFERENCES, JSON.stringify(prefs));
+  }
+
+  async getPreferences(): Promise<UserPreferences | null> {
+    try {
+      const data = await AsyncStorage.getItem(KEYS.USER_PREFERENCES);
+      return data ? JSON.parse(data) : null;
+    } catch {
+      return null;
+    }
+  }
+
+  // Cloned Voices
+  async saveClonedVoice(voice: ClonedVoice): Promise<void> {
+    const voices = await this.getClonedVoices();
+    voices.push({ ...voice, createdAt: new Date().toISOString() });
+    await AsyncStorage.setItem(KEYS.CLONED_VOICES, JSON.stringify(voices));
+  }
+
+  async getClonedVoices(): Promise<ClonedVoice[]> {
+    try {
+      const data = await AsyncStorage.getItem(KEYS.CLONED_VOICES);
+      return data ? JSON.parse(data) : [];
+    } catch {
+      return [];
+    }
+  }
+
+  async deleteClonedVoice(voiceId: string): Promise<void> {
+    const voices = await this.getClonedVoices();
+    const filtered = voices.filter(v => v.id !== voiceId);
+    await AsyncStorage.setItem(KEYS.CLONED_VOICES, JSON.stringify(filtered));
+  }
+
+  // Bookmarks
+  async saveBookmark(bookmark: Bookmark): Promise<void> {
+    const bookmarks = await this.getBookmarks();
+    bookmarks.push({ ...bookmark, createdAt: new Date().toISOString() });
+    await AsyncStorage.setItem(KEYS.BOOKMARKS, JSON.stringify(bookmarks));
+  }
+
+  async getBookmarks(): Promise<Bookmark[]> {
+    try {
+      const data = await AsyncStorage.getItem(KEYS.BOOKMARKS);
+      return data ? JSON.parse(data) : [];
+    } catch {
+      return [];
+    }
+  }
+
+  async deleteBookmark(bookmarkId: string): Promise<void> {
+    const bookmarks = await this.getBookmarks();
+    const filtered = bookmarks.filter(b => b.id !== bookmarkId);
+    await AsyncStorage.setItem(KEYS.BOOKMARKS, JSON.stringify(filtered));
+  }
+
+  // Clear all data
+  async clearAllData(): Promise<void> {
+    await AsyncStorage.multiRemove(Object.values(KEYS));
+  }
+}
+
+export const storageService = new StorageService();
+
+ 
+==========================================
+FILE: \src\services\studyRoomService.ts
+==========================================
+import { StudyRoom, Message } from '../types';
+import { storageService } from './storageService';
+
+// Simulated WebSocket connection state
+type ConnectionState = 'disconnected' | 'connecting' | 'connected';
+
+interface RoomParticipant {
+  id: string;
+  name: string;
+  avatar?: string;
+  isHost: boolean;
+  joinedAt: string;
+}
+
+interface RoomState {
+  room: StudyRoom;
+  participants: RoomParticipant[];
+  messages: Message[];
+  currentPassage: {
+    book: string;
+    chapter: number;
+    verses: number[];
+  };
+}
+
+type MessageHandler = (message: Message) => void;
+type ParticipantHandler = (participants: RoomParticipant[]) => void;
+type ConnectionHandler = (state: ConnectionState) => void;
+
+class StudyRoomService {
+  private connectionState: ConnectionState = 'disconnected';
+  private currentRoomId: string | null = null;
+  private messageHandlers: Set<MessageHandler> = new Set();
+  private participantHandlers: Set<ParticipantHandler> = new Set();
+  private connectionHandlers: Set<ConnectionHandler> = new Set();
+  private mockParticipants: RoomParticipant[] = [];
+  private mockMessages: Message[] = [];
+  private pollInterval: NodeJS.Timeout | null = null;
+
+  /**
+   * Connect to a study room
+   * In production, this would establish a WebSocket connection
+   */
+  async joinRoom(roomId: string, userName: string): Promise<boolean> {
+    try {
+      this.setConnectionState('connecting');
+      this.currentRoomId = roomId;
+
+      // Simulate connection delay
+      await new Promise(resolve => setTimeout(resolve, 500));
+
+      // Initialize mock participants
+      this.mockParticipants = [
+        { id: 'user-1', name: userName, isHost: false, joinedAt: new Date().toISOString() },
+        { id: 'host-1', name: 'Pastor Michael', isHost: true, joinedAt: new Date().toISOString() },
+        { id: 'user-2', name: 'Sarah', isHost: false, joinedAt: new Date().toISOString() },
+        { id: 'user-3', name: 'David', isHost: false, joinedAt: new Date().toISOString() },
+      ];
+
+      // Initialize mock messages
+      this.mockMessages = [
+        {
+          id: 'msg-1',
+          text: 'Welcome everyone! Let\'s begin our study of John 3.',
+          sender: 'Pastor Michael',
+          timestamp: new Date(Date.now() - 300000),
+          isOwn: false,
+        },
+        {
+          id: 'msg-2',
+          text: 'The Greek word for "again" here is fascinating.',
+          sender: 'Sarah',
+          timestamp: new Date(Date.now() - 240000),
+          isOwn: false,
+        },
+      ];
+
+      this.setConnectionState('connected');
+      this.notifyParticipantHandlers();
+      
+      // Start polling for updates (simulates real-time)
+      this.startPolling();
+
+      return true;
+    } catch (error) {
+      console.error('Error joining room:', error);
+      this.setConnectionState('disconnected');
+      return false;
+    }
+  }
+
+  /**
+   * Leave the current room
+   */
+  async leaveRoom(): Promise<void> {
+    this.stopPolling();
+    this.currentRoomId = null;
+    this.mockParticipants = [];
+    this.mockMessages = [];
+    this.setConnectionState('disconnected');
+  }
+
+  /**
+   * Send a message to the room
+   */
+  async sendMessage(text: string, senderName: string): Promise<boolean> {
+    if (this.connectionState !== 'connected') {
+      return false;
+    }
+
+    try {
+      const message: Message = {
+        id: `msg-${Date.now()}`,
+        text,
+        sender: senderName,
+        timestamp: new Date(),
+        isOwn: true,
+      };
+
+      this.mockMessages.push(message);
+      this.notifyMessageHandlers(message);
+
+      // Simulate response from other participant after delay
+      setTimeout(() => {
+        this.simulateResponse();
+      }, 2000 + Math.random() * 3000);
+
+      return true;
+    } catch (error) {
+      console.error('Error sending message:', error);
+      return false;
+    }
+  }
+
+  /**
+   * Subscribe to new messages
+   */
+  onMessage(handler: MessageHandler): () => void {
+    this.messageHandlers.add(handler);
+    return () => this.messageHandlers.delete(handler);
+  }
+
+  /**
+   * Subscribe to participant updates
+   */
+  onParticipantsChange(handler: ParticipantHandler): () => void {
+    this.participantHandlers.add(handler);
+    // Send current state immediately
+    handler(this.mockParticipants);
+    return () => this.participantHandlers.delete(handler);
+  }
+
+  /**
+   * Subscribe to connection state changes
+   */
+  onConnectionChange(handler: ConnectionHandler): () => void {
+    this.connectionHandlers.add(handler);
+    handler(this.connectionState);
+    return () => this.connectionHandlers.delete(handler);
+  }
+
+  /**
+   * Get current messages
+   */
+  getMessages(): Message[] {
+    return [...this.mockMessages];
+  }
+
+  /**
+   * Get current participants
+   */
+  getParticipants(): RoomParticipant[] {
+    return [...this.mockParticipants];
+  }
+
+  /**
+   * Get connection state
+   */
+  getConnectionState(): ConnectionState {
+    return this.connectionState;
+  }
+
+  // Private methods
+
+  private setConnectionState(state: ConnectionState): void {
+    this.connectionState = state;
+    this.connectionHandlers.forEach(handler => handler(state));
+  }
+
+  private notifyMessageHandlers(message: Message): void {
+    this.messageHandlers.forEach(handler => handler(message));
+  }
+
+  private notifyParticipantHandlers(): void {
+    this.participantHandlers.forEach(handler => handler(this.mockParticipants));
+  }
+
+  private startPolling(): void {
+    // Simulate real-time updates every 10 seconds
+    this.pollInterval = setInterval(() => {
+      // Occasionally add/remove participants
+      if (Math.random() > 0.7) {
+        this.simulateParticipantChange();
+      }
+    }, 10000);
+  }
+
+  private stopPolling(): void {
+    if (this.pollInterval) {
+      clearInterval(this.pollInterval);
+      this.pollInterval = null;
+    }
+  }
+
+  private simulateResponse(): void {
+    const responses = [
+      'That\'s a great point!',
+      'I never thought of it that way.',
+      'Can you elaborate on that?',
+      'The original Greek really clarifies this.',
+      'This connects to what we studied last week.',
+      'Amen to that!',
+    ];
+
+    const senders = ['Sarah', 'David', 'Pastor Michael'];
+    const sender = senders[Math.floor(Math.random() * senders.length)];
+    const text = responses[Math.floor(Math.random() * responses.length)];
+
+    const message: Message = {
+      id: `msg-${Date.now()}`,
+      text,
+      sender,
+      timestamp: new Date(),
+      isOwn: false,
+    };
+
+    this.mockMessages.push(message);
+    this.notifyMessageHandlers(message);
+  }
+
+  private simulateParticipantChange(): void {
+    const names = ['Ruth', 'James', 'Mary', 'Peter', 'John', 'Martha'];
+    const action = Math.random() > 0.5 ? 'join' : 'leave';
+
+    if (action === 'join' && this.mockParticipants.length < 15) {
+      const name = names[Math.floor(Math.random() * names.length)];
+      if (!this.mockParticipants.find(p => p.name === name)) {
+        this.mockParticipants.push({
+          id: `user-${Date.now()}`,
+          name,
+          isHost: false,
+          joinedAt: new Date().toISOString(),
+        });
+        this.notifyParticipantHandlers();
+      }
+    } else if (action === 'leave' && this.mockParticipants.length > 3) {
+      const nonHostParticipants = this.mockParticipants.filter(p => !p.isHost && p.id !== 'user-1');
+      if (nonHostParticipants.length > 0) {
+        const toRemove = nonHostParticipants[Math.floor(Math.random() * nonHostParticipants.length)];
+        this.mockParticipants = this.mockParticipants.filter(p => p.id !== toRemove.id);
+        this.notifyParticipantHandlers();
+      }
+    }
+  }
+}
+
+export const studyRoomService = new StudyRoomService();
+
+// Room management functions
+export async function createStudyRoom(room: Omit<StudyRoom, 'id'>): Promise<StudyRoom> {
+  const newRoom: StudyRoom = {
+    ...room,
+    id: `room-${Date.now()}`,
+  };
+  
+  // In production, this would call an API
+  // For now, we just return the created room
+  return newRoom;
+}
+
+export async function getPublicRooms(): Promise<StudyRoom[]> {
+  // Mock public rooms
+  return [
+    {
+      id: 'room-1',
+      name: 'Romans Deep Study',
+      description: 'Exploring Paul\'s letter to the Romans',
+      host: 'Pastor Michael',
+      participants: 12,
+      schedule: 'Mondays 7pm',
+      isPublic: true,
+    },
+    {
+      id: 'room-2',
+      name: 'Psalms for Today',
+      description: 'Finding comfort and wisdom in the Psalms',
+      host: 'Sarah Johnson',
+      participants: 8,
+      schedule: 'Wednesdays 6pm',
+      isPublic: true,
+    },
+    {
+      id: 'room-3',
+      name: 'Gospel of John',
+      description: 'Verse by verse study of John\'s Gospel',
+      host: 'David Chen',
+      participants: 15,
+      schedule: 'Fridays 8pm',
+      isPublic: true,
+    },
+  ];
+}
+
+ 
+==========================================
+FILE: \src\services\voiceCloningService.ts
+==========================================
+import { Audio } from 'expo-av';
+import * as FileSystem from 'expo-file-system';
+import * as DocumentPicker from 'expo-document-picker';
+import { storageService, ClonedVoice } from './storageService';
+
+// Voice cloning configuration
+const VOICE_CLONE_API_URL = 'https://api.elevenlabs.io/v1'; // Example API
+const MIN_RECORDING_DURATION = 30; // seconds
+const MAX_RECORDING_DURATION = 300; // 5 minutes
+const SUPPORTED_FORMATS = ['mp3', 'wav', 'm4a', 'aac', 'ogg'];
+
+interface RecordingState {
+  isRecording: boolean;
+  duration: number;
+  uri: string | null;
+}
+
+interface VoiceCloneResult {
+  success: boolean;
+  voiceId?: string;
+  error?: string;
+}
+
+class VoiceCloningService {
+  private recording: Audio.Recording | null = null;
+  private recordingState: RecordingState = {
+    isRecording: false,
+    duration: 0,
+    uri: null,
+  };
+  private durationInterval: NodeJS.Timeout | null = null;
+
+  /**
+   * Request microphone permissions
+   */
+  async requestPermissions(): Promise<boolean> {
+    try {
+      const { status } = await Audio.requestPermissionsAsync();
+      return status === 'granted';
+    } catch (error) {
+      console.error('Error requesting audio permissions:', error);
+      return false;
+    }
+  }
+
+  /**
+   * Start recording audio for voice cloning
+   */
+  async startRecording(onDurationUpdate?: (duration: number) => void): Promise<boolean> {
+    try {
+      const hasPermission = await this.requestPermissions();
+      if (!hasPermission) {
+        throw new Error('Microphone permission not granted');
+      }
+
+      await Audio.setAudioModeAsync({
+        allowsRecordingIOS: true,
+        playsInSilentModeIOS: true,
+      });
+
+      const { recording } = await Audio.Recording.createAsync(
+        Audio.RecordingOptionsPresets.HIGH_QUALITY
+      );
+
+      this.recording = recording;
+      this.recordingState = {
+        isRecording: true,
+        duration: 0,
+        uri: null,
+      };
+
+      // Start duration timer
+      this.durationInterval = setInterval(() => {
+        this.recordingState.duration += 1;
+        onDurationUpdate?.(this.recordingState.duration);
+
+        // Auto-stop at max duration
+        if (this.recordingState.duration >= MAX_RECORDING_DURATION) {
+          this.stopRecording();
+        }
+      }, 1000);
+
+      return true;
+    } catch (error) {
+      console.error('Error starting recording:', error);
+      return false;
+    }
+  }
+
+  /**
+   * Stop recording and get the audio file
+   */
+  async stopRecording(): Promise<{ uri: string; duration: number } | null> {
+    try {
+      if (!this.recording) {
+        return null;
+      }
+
+      if (this.durationInterval) {
+        clearInterval(this.durationInterval);
+        this.durationInterval = null;
+      }
+
+      await this.recording.stopAndUnloadAsync();
+      const uri = this.recording.getURI();
+      const duration = this.recordingState.duration;
+
+      this.recording = null;
+      this.recordingState = {
+        isRecording: false,
+        duration: 0,
+        uri: uri,
+      };
+
+      await Audio.setAudioModeAsync({
+        allowsRecordingIOS: false,
+      });
+
+      if (uri && duration >= MIN_RECORDING_DURATION) {
+        return { uri, duration };
+      } else if (duration < MIN_RECORDING_DURATION) {
+        console.warn(`Recording too short: ${duration}s (min: ${MIN_RECORDING_DURATION}s)`);
+        return null;
+      }
+
+      return null;
+    } catch (error) {
+      console.error('Error stopping recording:', error);
+      return null;
+    }
+  }
+
+  /**
+   * Cancel current recording
+   */
+  async cancelRecording(): Promise<void> {
+    try {
+      if (this.durationInterval) {
+        clearInterval(this.durationInterval);
+        this.durationInterval = null;
+      }
+
+      if (this.recording) {
+        await this.recording.stopAndUnloadAsync();
+        this.recording = null;
+      }
+
+      this.recordingState = {
+        isRecording: false,
+        duration: 0,
+        uri: null,
+      };
+    } catch (error) {
+      console.error('Error canceling recording:', error);
+    }
+  }
+
+  /**
+   * Pick an audio file from device storage
+   */
+  async pickAudioFile(): Promise<{ uri: string; name: string } | null> {
+    try {
+      const result = await DocumentPicker.getDocumentAsync({
+        type: ['audio/*'],
+        copyToCacheDirectory: true,
+      });
+
+      if (result.canceled || !result.assets?.[0]) {
+        return null;
+      }
+
+      const asset = result.assets[0];
+      const extension = asset.name.split('.').pop()?.toLowerCase();
+
+      if (!extension || !SUPPORTED_FORMATS.includes(extension)) {
+        throw new Error(`Unsupported format: ${extension}. Supported: ${SUPPORTED_FORMATS.join(', ')}`);
+      }
+
+      return {
+        uri: asset.uri,
+        name: asset.name,
+      };
+    } catch (error) {
+      console.error('Error picking audio file:', error);
+      return null;
+    }
+  }
+
+  /**
+   * Create a voice clone from audio file
+   * Note: This is a placeholder - actual implementation would call a voice cloning API
+   */
+  async createVoiceClone(
+    audioUri: string,
+    voiceName: string,
+    onProgress?: (progress: number) => void
+  ): Promise<VoiceCloneResult> {
+    try {
+      // Simulate upload progress
+      for (let i = 0; i <= 100; i += 10) {
+        await new Promise(resolve => setTimeout(resolve, 200));
+        onProgress?.(i);
+      }
+
+      // Generate a unique voice ID
+      const voiceId = `clone-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+
+      // Save to local storage
+      const clonedVoice: ClonedVoice = {
+        id: voiceId,
+        name: voiceName,
+        sampleUri: audioUri,
+        createdAt: new Date().toISOString(),
+      };
+
+      await storageService.saveClonedVoice(clonedVoice);
+
+      return {
+        success: true,
+        voiceId,
+      };
+    } catch (error) {
+      console.error('Error creating voice clone:', error);
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Unknown error',
+      };
+    }
+  }
+
+  /**
+   * Delete a cloned voice
+   */
+  async deleteVoiceClone(voiceId: string): Promise<boolean> {
+    try {
+      await storageService.deleteClonedVoice(voiceId);
+      return true;
+    } catch (error) {
+      console.error('Error deleting voice clone:', error);
+      return false;
+    }
+  }
+
+  /**
+   * Get all cloned voices
+   */
+  async getClonedVoices(): Promise<ClonedVoice[]> {
+    return storageService.getClonedVoices();
+  }
+
+  /**
+   * Play audio preview
+   */
+  async playPreview(uri: string): Promise<void> {
+    try {
+      const { sound } = await Audio.Sound.createAsync({ uri });
+      await sound.playAsync();
+      
+      // Unload after playing
+      sound.setOnPlaybackStatusUpdate((status) => {
+        if (status.isLoaded && status.didJustFinish) {
+          sound.unloadAsync();
+        }
+      });
+    } catch (error) {
+      console.error('Error playing preview:', error);
+    }
+  }
+
+  /**
+   * Format duration as MM:SS
+   */
+  formatDuration(seconds: number): string {
+    const mins = Math.floor(seconds / 60);
+    const secs = seconds % 60;
+    return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+  }
+
+  /**
+   * Check if recording duration is sufficient
+   */
+  isRecordingValid(duration: number): boolean {
+    return duration >= MIN_RECORDING_DURATION;
+  }
+
+  /**
+   * Get minimum required recording duration
+   */
+  getMinDuration(): number {
+    return MIN_RECORDING_DURATION;
+  }
+
+  /**
+   * Get current recording state
+   */
+  getRecordingState(): RecordingState {
+    return { ...this.recordingState };
+  }
+}
+
+export const voiceCloningService = new VoiceCloningService();
+
+ 
+==========================================
+FILE: \src\services\voiceService.ts
+==========================================
+import * as Speech from 'expo-speech';
+import { VoiceProfile } from '../types';
+
+// Voice configurations for different narrator profiles
+const voiceConfigs: Record<string, { pitch: number; rate: number; voice?: string }> = {
+  'narrator-1': { pitch: 0.9, rate: 0.85 },   // David - calm, warm male
+  'narrator-2': { pitch: 1.2, rate: 0.9 },    // Sarah - clear, gentle female
+  'narrator-3': { pitch: 0.7, rate: 0.8 },    // Michael - deep, authoritative
+  'narrator-4': { pitch: 1.3, rate: 0.85 },   // Grace - soft, soothing female
+};
+
+class VoiceService {
+  private isSpeaking = false;
+  private availableVoices: Speech.Voice[] = [];
+
+  async loadVoices(): Promise<void> {
+    this.availableVoices = await Speech.getAvailableVoicesAsync();
+  }
+
+  async speak(text: string, voice?: VoiceProfile): Promise<void> {
+    if (this.isSpeaking) {
+      await this.stop();
+    }
+
+    this.isSpeaking = true;
+
+    // Get voice configuration based on selected profile
+    const config = voice ? voiceConfigs[voice.id] : undefined;
+    const pitch = config?.pitch ?? 1.0;
+    const rate = config?.rate ?? 0.9;
+
+    return new Promise((resolve, reject) => {
+      Speech.speak(text, {
+        language: 'en-US',
+        pitch,
+        rate,
+        onDone: () => {
+          this.isSpeaking = false;
+          resolve();
+        },
+        onError: (error) => {
+          this.isSpeaking = false;
+          reject(error);
+        },
+        onStopped: () => {
+          this.isSpeaking = false;
+          resolve();
+        },
+      });
+    });
+  }
+
+  async stop(): Promise<void> {
+    if (this.isSpeaking) {
+      await Speech.stop();
+      this.isSpeaking = false;
+    }
+  }
+
+  getIsSpeaking(): boolean {
+    return this.isSpeaking;
+  }
+}
+
+export const voiceService = new VoiceService();
+
+ 
+==========================================
+FILE: \src\types\index.ts
+==========================================
+export interface VoiceProfile {
+  id: string;
+  name: string;
+  description: string;
+  type: 'narrator' | 'clone';
+  audioUri?: string;
+}
+
+export interface StudyRoom {
+  id: string;
+  name: string;
+  description: string;
+  host: string;
+  participants: number;
+  schedule?: string;
+  isPublic: boolean;
+}
+
+export interface StudyPlan {
+  id: string;
+  name: string;
+  description: string;
+  progress?: number;
+}
+
+export interface UpcomingSession {
+  id: string;
+  title: string;
+  time: string;
+  host: string;
+}
+
+export interface Message {
+  id: string;
+  text: string;
+  sender: string;
+  timestamp: Date;
+  isOwn?: boolean;
+}
+
+export interface Conversation {
+  id: string;
+  name: string;
+  lastMessage: string;
+  avatar?: string;
+  unread?: number;
+}
+
+export interface BibleVerse {
+  number: number;
+  originalText: string;
+  englishText: string;
+  language: 'hebrew' | 'greek' | 'aramaic';
+  transliteration?: string;
+  strongsNumbers?: string[];
+}
+
+export interface BibleChapter {
+  book: string;
+  chapter: number;
+  verses: BibleVerse[];
+  language: 'hebrew' | 'greek' | 'aramaic';
+}
+
+ 
+==========================================
+FILE: \app.json
+==========================================
+{
+  "expo": {
+    "name": "temp_app",
+    "slug": "temp_app",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "light",
+    "newArchEnabled": true,
+    "splash": {
+      "image": "./assets/splash-icon.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#ffffff"
+    },
+    "ios": {
+      "supportsTablet": true
+    },
+    "android": {
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#ffffff"
+      },
+      "edgeToEdgeEnabled": true,
+      "predictiveBackGestureEnabled": false
+    },
+    "web": {
+      "favicon": "./assets/favicon.png"
+    }
+  }
+}
+ 
+==========================================
+FILE: \App.tsx
+==========================================
+import React from 'react';
+import { StatusBar } from 'expo-status-bar';
+import { VoiceProvider, useVoice } from './src/context/VoiceContext';
+import { AppNavigator } from './src/navigation/AppNavigator';
+import { AudioFirstScreen } from './src/screens/AudioFirstScreen';
+
+function AppContent() {
+  const { audioFirstMode, setAudioFirstMode } = useVoice();
+
+  if (audioFirstMode) {
+    return <AudioFirstScreen onExit={() => setAudioFirstMode(false)} />;
+  }
+
+  return <AppNavigator />;
+}
+
+export default function App() {
+  return (
+    <VoiceProvider>
+      <StatusBar style="light" />
+      <AppContent />
+    </VoiceProvider>
+  );
+}
+ 
+==========================================
+FILE: \index.ts
+==========================================
+import { registerRootComponent } from 'expo';
+
+import App from './App';
+
+// registerRootComponent calls AppRegistry.registerComponent('main', () => App);
+// It also ensures that whether you load the app in Expo Go or in a native build,
+// the environment is set up appropriately
+registerRootComponent(App);
+ 
+==========================================
+FILE: \package.json
+==========================================
+{
+  "name": "mybible-app",
+  "version": "1.0.0",
+  "main": "index.ts",
+  "scripts": {
+    "start": "expo start",
+    "android": "expo start --android",
+    "ios": "expo start --ios",
+    "web": "expo start --web"
+  },
+  "dependencies": {
+    "@expo/vector-icons": "^15.0.3",
+    "@react-native-async-storage/async-storage": "^2.2.0",
+    "@react-native-community/slider": "5.0.1",
+    "@react-navigation/bottom-tabs": "^7.8.6",
+    "@react-navigation/native": "^7.1.21",
+    "@react-navigation/native-stack": "^7.8.0",
+    "expo": "~54.0.25",
+    "expo-av": "~16.0.7",
+    "expo-document-picker": "~14.0.7",
+    "expo-file-system": "~19.0.19",
+    "expo-speech": "~14.0.7",
+    "expo-status-bar": "~3.0.8",
+    "react": "19.1.0",
+    "react-dom": "19.1.0",
+    "react-native": "0.81.5",
+    "react-native-safe-area-context": "~5.6.0",
+    "react-native-screens": "~4.16.0",
+    "react-native-web": "^0.21.0"
+  },
+  "devDependencies": {
+    "@types/react": "~19.1.0",
+    "typescript": "~5.9.2"
+  },
+  "private": true
+}
+ 
+==========================================
+FILE: \tsconfig.json
+==========================================
+{
+  "extends": "expo/tsconfig.base",
+  "compilerOptions": {
+    "strict": true
+  }
+}
