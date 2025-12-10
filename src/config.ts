@@ -1,25 +1,25 @@
 // Configuration for external services
-// In a real app, these should be loaded from environment variables (e.g., .env)
 
 export const config = {
-  // OpenAI API (for AI Study Assistant)
-  // Get key: https://platform.openai.com/api-keys
-  openai: {
-    apiKey: '', // Enter your OpenAI API Key here
-    model: 'gpt-4o-mini',
+  // Google AI (Gemini)
+  // Key provided by user
+  googleAI: {
+    apiKey: 'AIzaSyC0yJi6Cck2IIkTfLRFY7SfnIMDDaC0f88',
+    model: 'gemini-1.5-flash', // Using a fast, capable model
   },
 
   // ElevenLabs API (for Voice Cloning)
-  // Get key: https://elevenlabs.io/app/settings/api-keys
+  // Key provided by user
   elevenLabs: {
-    apiKey: '', // Enter your ElevenLabs API Key here
+    apiKey: 'sk_e123db856381a534c5a3afc1d135d85263ef8675339c87ca',
     voiceCloneUrl: 'https://api.elevenlabs.io/v1/voices/add',
     ttsUrl: 'https://api.elevenlabs.io/v1/text-to-speech',
   },
 
   // API.Bible (for additional translations)
-  // Get key: https://scripture.api.bible/
+  // Key provided by user
   apiBible: {
-    apiKey: '', // Enter your API.Bible Key here
+    apiKey: 'pbnN3b_VRiDqCFuc5vfiF',
+    baseUrl: 'https://api.scripture.bible/v1',
   },
 };

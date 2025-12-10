@@ -1,8 +1,5 @@
 import { BibleVerse } from '../types';
-
-// API.Bible configuration (optional - for 2000+ translations)
-// Get your free key at: https://scripture.api.bible
-const API_BIBLE_KEY = ''; // Add your key here for additional translations
+import { config } from '../config';
 
 // Bible version IDs for API.Bible
 const API_BIBLE_VERSIONS = {
@@ -64,7 +61,7 @@ export async function fetchFromGetBible(
   chapter: number
 ): Promise<any> {
   const cacheKey = `getbible-${translation}-${bookNumber}-${chapter}`;
-  
+
   try {
     const response = await fetch(
       `https://getbible.net/v2/${translation}/${bookNumber}/${chapter}.json`,
@@ -72,12 +69,12 @@ export async function fetchFromGetBible(
         headers: { 'Accept': 'application/json' },
       }
     );
-    
+
     if (!response.ok) {
       console.warn(`GetBible API returned ${response.status}`);
       return null;
     }
-    
+
     const data = await response.json();
     return data;
   } catch (error) {
@@ -101,12 +98,12 @@ export async function fetchGreekNT(
         headers: { 'Accept': 'application/json' },
       }
     );
-    
+
     if (!response.ok) {
       console.warn(`Bolls.life Greek API returned ${response.status}`);
       return [];
     }
-    
+
     return await response.json();
   } catch (error) {
     console.error('Bolls.life Greek API error:', error);
@@ -129,12 +126,12 @@ export async function fetchHebrewOT(
         headers: { 'Accept': 'application/json' },
       }
     );
-    
+
     if (!response.ok) {
       console.warn(`Bolls.life Hebrew API returned ${response.status}`);
       return [];
     }
-    
+
     return await response.json();
   } catch (error) {
     console.error('Bolls.life Hebrew API error:', error);
@@ -159,7 +156,7 @@ export async function fetchInterlinear(
         headers: { 'Accept': 'application/json' },
       }
     );
-    
+
     if (!response.ok) return [];
     return await response.json();
   } catch {
@@ -176,26 +173,26 @@ export async function fetchBiblePassage(
   isOT: boolean
 ): Promise<BibleVerse[]> {
   const cacheKey = `passage-${bookName}-${chapter}`;
-  
+
   if (cache.has(cacheKey)) {
     return cache.get(cacheKey)!;
   }
-  
+
   try {
     const getBibleBook = GETBIBLE_BOOK_MAP[bookName] || bookName;
     const bollsBook = BOLLS_BOOK_MAP[bookName] || bookName;
-    
+
     // Fetch English (KJV) and original language in parallel
     const [kjvData, originalData] = await Promise.all([
       fetchFromGetBible('kjv', getBibleBook, chapter),
       isOT ? fetchHebrewOT(bollsBook, chapter) : fetchGreekNT(bollsBook, chapter),
     ]);
-    
+
     if (!kjvData?.verses || kjvData.verses.length === 0) {
       console.warn('No verses returned from GetBible');
       return getFallbackVerses(bookName, chapter, isOT);
     }
-    
+
     const verses: BibleVerse[] = kjvData.verses.map((v: any, index: number) => ({
       number: v.verse || index + 1,
       englishText: cleanText(v.text),
@@ -204,7 +201,7 @@ export async function fetchBiblePassage(
       strongsNumbers: originalData?.[index]?.strongs || [],
       language: isOT ? 'hebrew' : 'greek',
     }));
-    
+
     cache.set(cacheKey, verses);
     return verses;
   } catch (error) {
@@ -220,22 +217,24 @@ export async function fetchFromApiBible(
   bibleId: string,
   passageId: string
 ): Promise<any> {
-  if (!API_BIBLE_KEY) {
+  const apiKey = config.apiBible.apiKey;
+
+  if (!apiKey) {
     console.warn('API.Bible key not configured');
     return null;
   }
-  
+
   try {
     const response = await fetch(
-      `https://api.scripture.bible/v1/bibles/${bibleId}/passages/${passageId}?content-type=text`,
+      `${config.apiBible.baseUrl || 'https://api.scripture.bible/v1'}/bibles/${bibleId}/passages/${passageId}?content-type=text`,
       {
         headers: {
-          'api-key': API_BIBLE_KEY,
+          'api-key': apiKey,
           'Accept': 'application/json',
         },
       }
     );
-    
+
     if (!response.ok) return null;
     return await response.json();
   } catch {
@@ -268,7 +267,7 @@ function getFallbackVerses(book: string, chapter: number, isOT: boolean): BibleV
 }
 
 // Export book mappings for use in other components
-export { GETBIBLE_BOOK_MAP, BOLLS_BOOK_MAP, API_BIBLE_KEY };
+export { GETBIBLE_BOOK_MAP, BOLLS_BOOK_MAP };
 
 // Legacy export for backward compatibility
 export const bibleApi = {

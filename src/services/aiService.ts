@@ -19,7 +19,7 @@ export interface StudyGuide {
   reflectionQuestions: string[];
 }
 
-// AI Service capable of switching between Mock and Real API
+// AI Service using Google Gemini
 class AIService {
   private delay(ms: number) {
     return new Promise(resolve => setTimeout(resolve, ms));
@@ -29,7 +29,7 @@ class AIService {
    * Ask a question to the AI about the Bible
    */
   async askQuestion(question: string, context?: string): Promise<AIResponse> {
-    if (config.openai.apiKey) {
+    if (config.googleAI.apiKey) {
       return this.askRealAI(question, context);
     }
     return this.askMockAI(question);
@@ -39,43 +39,52 @@ class AIService {
    * Generate a study guide for a specific Bible passage
    */
   async generateStudyGuide(book: string, chapter: number): Promise<StudyGuide> {
-    if (config.openai.apiKey) {
+    if (config.googleAI.apiKey) {
       return this.generateRealStudyGuide(book, chapter);
     }
     return this.generateMockStudyGuide(book, chapter);
   }
 
-  // --- Real API Implementations ---
+  // --- Real API Implementations (Google Gemini) ---
 
   private async askRealAI(question: string, context?: string): Promise<AIResponse> {
     try {
-      const response = await fetch('https://api.openai.com/v1/chat/completions', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${config.openai.apiKey}`,
-        },
-        body: JSON.stringify({
-          model: config.openai.model,
-          messages: [
-            {
-              role: 'system',
-              content: `You are a helpful, spiritual Bible study assistant.
-                        Context: ${context || 'General Bible Study'}.
-                        Provide answers that are scripture-centered, warm, and kind.
-                        Include relevant Bible references.
-                        Format the response as JSON with keys: text, references (array of strings), suggestedQuestions (array of strings).`
-            },
-            { role: 'user', content: question }
-          ],
-          response_format: { type: "json_object" }
-        }),
-      });
+      const prompt = `You are a helpful, spiritual Bible study assistant.
+context: ${context || 'General Bible Study'}.
+Question: ${question}
+Provide an answer that is scripture-centered, warm, and kind. Include relevant Bible references.
+Format the response strictly as a JSON object with the following keys:
+- text: The main answer content.
+- references: An array of strings, e.g., ["John 3:16"].
+- suggestedQuestions: An array of strings for follow-up questions.
+Do not include Markdown formatting (like \`\`\`json) in the response, just the raw JSON.`;
 
-      if (!response.ok) throw new Error('OpenAI API Error');
+      const response = await fetch(
+        `https://generativelanguage.googleapis.com/v1beta/models/${config.googleAI.model}:generateContent?key=${config.googleAI.apiKey}`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            contents: [{ parts: [{ text: prompt }] }],
+          }),
+        }
+      );
+
+      if (!response.ok) {
+        const errData = await response.json();
+        throw new Error(errData.error?.message || 'Google AI API Error');
+      }
 
       const data = await response.json();
-      const content = JSON.parse(data.choices[0].message.content);
+      const rawText = data.candidates?.[0]?.content?.parts?.[0]?.text;
+
+      if (!rawText) throw new Error('No content in AI response');
+
+      // Clean up markdown if present
+      const jsonText = rawText.replace(/```json/g, '').replace(/```/g, '').trim();
+      const content = JSON.parse(jsonText);
 
       return {
         text: content.text,
@@ -90,39 +99,46 @@ class AIService {
 
   private async generateRealStudyGuide(book: string, chapter: number): Promise<StudyGuide> {
     try {
-      const response = await fetch('https://api.openai.com/v1/chat/completions', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${config.openai.apiKey}`,
-        },
-        body: JSON.stringify({
-          model: config.openai.model,
-          messages: [
-            {
-              role: 'system',
-              content: `You are a helpful Bible study assistant. Generate a study guide for ${book} Chapter ${chapter}.
-                        The tone should be spiritual, insightful, and easy to understand.
-                        Format the response as JSON with the following structure:
-                        {
-                          "title": "Study Guide: Book Chapter",
-                          "introduction": "Brief intro...",
-                          "sections": [
-                            { "heading": "Section Title", "content": "Analysis...", "verseRefs": ["Verse 1-3"] }
-                          ],
-                          "conclusion": "Closing thought...",
-                          "reflectionQuestions": ["Question 1", "Question 2"]
-                        }`
-            }
-          ],
-          response_format: { type: "json_object" }
-        }),
-      });
+      const prompt = `Generate a Bible study guide for ${book} Chapter ${chapter}.
+The tone should be spiritual, insightful, and easy to understand.
+Format the response strictly as a JSON object with the following structure:
+{
+  "title": "Study Guide Title",
+  "introduction": "Brief intro...",
+  "sections": [
+    { "heading": "Section Title", "content": "Analysis...", "verseRefs": ["Verse 1-3"] }
+  ],
+  "conclusion": "Closing thought...",
+  "reflectionQuestions": ["Question 1", "Question 2"]
+}
+Do not include Markdown formatting (like \`\`\`json) in the response, just the raw JSON.`;
 
-      if (!response.ok) throw new Error('OpenAI API Error');
+      const response = await fetch(
+        `https://generativelanguage.googleapis.com/v1beta/models/${config.googleAI.model}:generateContent?key=${config.googleAI.apiKey}`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            contents: [{ parts: [{ text: prompt }] }],
+          }),
+        }
+      );
+
+      if (!response.ok) {
+        const errData = await response.json();
+        throw new Error(errData.error?.message || 'Google AI API Error');
+      }
 
       const data = await response.json();
-      const content = JSON.parse(data.choices[0].message.content);
+      const rawText = data.candidates?.[0]?.content?.parts?.[0]?.text;
+
+      if (!rawText) throw new Error('No content in AI response');
+
+      // Clean up markdown if present
+      const jsonText = rawText.replace(/```json/g, '').replace(/```/g, '').trim();
+      const content = JSON.parse(jsonText);
 
       return content as StudyGuide;
     } catch (error) {
@@ -144,7 +160,6 @@ class AIService {
         suggestedQuestions: ['What is the difference between agape and phileo?', 'How can I love my enemies?'],
       };
     }
-    // ... (other mock responses can remain or be simplified)
 
     return {
       text: "That is a profound question. The Bible offers wisdom on many aspects of life. As we seek understanding, we can look to Scripture for guidance.",
