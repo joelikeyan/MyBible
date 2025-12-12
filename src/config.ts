@@ -1,6 +1,13 @@
 // Configuration for external services
 
 export const config = {
+  // OpenAI API (for AI Study Assistant)
+  // Key provided by user
+  openai: {
+    apiKey: 'proj_XAyHRpRjtv5Fs5yT3Xy7XUM4',
+    model: 'gpt-4o-mini',
+  },
+
   // Google AI (Gemini)
   // Key provided by user
   googleAI: {
