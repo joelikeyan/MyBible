@@ -1,0 +1,26 @@
+Starting project at /app
+Starting Metro Bundler
+The following packages should be updated for best compatibility with the installed expo version:
+  expo@54.0.25 - expected version: ~54.0.27
+  expo-av@16.0.7 - expected version: ~16.0.8
+  expo-document-picker@14.0.7 - expected version: ~14.0.8
+  expo-file-system@19.0.19 - expected version: ~19.0.20
+  expo-speech@14.0.7 - expected version: ~14.0.8
+  expo-status-bar@3.0.8 - expected version: ~3.0.9
+Your project may not work correctly until you install the expected versions of the packages.
+Waiting on http://localhost:8081
+Logs for your project will appear below.
+Web ./index.ts ░░░░░░░░░░░░░░░░  0.0% (0/1)
+Web ./index.ts ▓▓▓▓▓▓▓▓▓░░░░░░░ 56.3% (138/230)
+Web ./index.ts ▓▓▓▓▓▓▓▓▓▓░░░░░░ 62.9% (440/555)
+Web Bundled 8901ms index.ts (721 modules)
+ LOG  [web] Logs will appear in the browser console
+Web ./index.ts ░░░░░░░░░░░░░░░░  0.0% (0/1)
+Web Bundled 39ms index.ts (1 module)
+ LOG  [web] Logs will appear in the browser console
+Web ./index.ts ░░░░░░░░░░░░░░░░  0.0% (0/1)
+Web Bundled 482ms index.ts (1 module)
+ LOG  [web] Logs will appear in the browser console
+Web ./index.ts ░░░░░░░░░░░░░░░░  0.0% (0/1)
+Web Bundled 34ms index.ts (1 module)
+ LOG  [web] Logs will appear in the browser console
