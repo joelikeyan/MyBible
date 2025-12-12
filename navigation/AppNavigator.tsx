@@ -1,83 +1,61 @@
 import React from 'react';
-import { NavigationContainer } from '@react-navigation/native';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
-import { createNativeStackNavigator } from '@react-navigation/native-stack';
-import { Ionicons } from '@expo/vector-icons';
-
+import { NavigationContainer } from '@react-navigation/native';
 import { HomeScreen } from '../screens/HomeScreen';
-import { StudyRoomsScreen } from '../screens/StudyRoomsScreen';
-import { StudyRoomDetailScreen } from '../screens/StudyRoomDetailScreen';
-import { BibleScreen } from '../screens/BibleScreen';
-import { MessagesScreen } from '../screens/MessagesScreen';
-import { ProfileScreen } from '../screens/ProfileScreen';
+import { BibleReaderScreen } from '../screens/BibleReaderScreen';
+import { StudyRoomScreen } from '../screens/StudyRoomScreen';
+import { VoiceCloneScreen } from '../screens/VoiceCloneScreen';
+import { useTheme } from '../context/ThemeContext';
+import { Ionicons } from '@expo/vector-icons';
+import { View, Platform } from 'react-native';
+import { BlurView } from 'expo-blur';
 
 const Tab = createBottomTabNavigator();
-const Stack = createNativeStackNavigator();
 
-function StudyRoomsStack() {
-  return (
-    <Stack.Navigator screenOptions={{ headerShown: false }}>
-      <Stack.Screen name="StudyRoomsList" component={StudyRoomsScreen} />
-      <Stack.Screen name="StudyRoomDetail" component={StudyRoomDetailScreen} />
-    </Stack.Navigator>
-  );
-}
+export const AppNavigator = () => {
+  const { theme } = useTheme();
 
-function HomeStack() {
-  return (
-    <Stack.Navigator screenOptions={{ headerShown: false }}>
-      <Stack.Screen name="HomeMain" component={HomeScreen} />
-      <Stack.Screen name="StudyRoomDetail" component={StudyRoomDetailScreen} />
-    </Stack.Navigator>
-  );
-}
-
-export function AppNavigator() {
   return (
     <NavigationContainer>
       <Tab.Navigator
         screenOptions={({ route }) => ({
           headerShown: false,
+          tabBarStyle: {
+            position: 'absolute',
+            backgroundColor: Platform.OS === 'web' ? theme.navigationBar : 'transparent',
+            borderTopWidth: 0,
+            elevation: 0,
+            height: 80,
+            paddingBottom: 20,
+          },
+          tabBarBackground: () => (
+             Platform.OS !== 'web' ? (
+                <BlurView
+                    tint={theme.isDark ? 'dark' : 'light'}
+                    intensity={80}
+                    style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }}
+                />
+             ) : undefined
+          ),
+          tabBarActiveTintColor: theme.tabIconActive,
+          tabBarInactiveTintColor: theme.tabIconInactive,
           tabBarIcon: ({ focused, color, size }) => {
-            let iconName: keyof typeof Ionicons.glyphMap = 'home';
+            let iconName: any;
 
-            if (route.name === 'Home') {
-              iconName = focused ? 'home' : 'home-outline';
-            } else if (route.name === 'Study Rooms') {
-              iconName = focused ? 'people' : 'people-outline';
-            } else if (route.name === 'Bible') {
-              iconName = focused ? 'book' : 'book-outline';
-            } else if (route.name === 'Messages') {
-              iconName = focused ? 'chatbubbles' : 'chatbubbles-outline';
-            } else if (route.name === 'Profile') {
-              iconName = focused ? 'person' : 'person-outline';
-            }
+            if (route.name === 'Home') iconName = focused ? 'home' : 'home-outline';
+            else if (route.name === 'Bible') iconName = focused ? 'book' : 'book-outline';
+            else if (route.name === 'Study') iconName = focused ? 'people' : 'people-outline';
+            else if (route.name === 'Profile') iconName = focused ? 'person' : 'person-outline';
 
             return <Ionicons name={iconName} size={size} color={color} />;
           },
-          tabBarActiveTintColor: '#6B4EFF',
-          tabBarInactiveTintColor: '#8B7355',
-          tabBarStyle: {
-            backgroundColor: '#FFFFFF',
-            borderTopColor: '#E8DDD4',
-            paddingTop: 8,
-            paddingBottom: 8,
-            height: 80,
-          },
-          tabBarLabelStyle: {
-            fontSize: 12,
-            fontWeight: '500',
-            marginTop: 4,
-          },
         })}
       >
-        <Tab.Screen name="Home" component={HomeStack} />
-        <Tab.Screen name="Study Rooms" component={StudyRoomsStack} />
-        <Tab.Screen name="Bible" component={BibleScreen} />
-        <Tab.Screen name="Messages" component={MessagesScreen} />
-        <Tab.Screen name="Profile" component={ProfileScreen} />
+        <Tab.Screen name="Home" component={HomeScreen} />
+        <Tab.Screen name="Study" component={StudyRoomScreen} />
+        <Tab.Screen name="Bible" component={BibleReaderScreen} />
+        <Tab.Screen name="Profile" component={VoiceCloneScreen} options={{ tabBarLabel: 'Voice Center' }} />
       </Tab.Navigator>
     </NavigationContainer>
   );
-}
-
+};
