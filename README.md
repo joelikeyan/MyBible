@@ -1,13 +1,1 @@
-> Why do I have a folder named ".expo" in my project?
-
-The ".expo" folder is created when an Expo project is started using "expo start" command.
-
-> What do the files contain?
-
-- "devices.json": contains information about devices that have recently opened this project. This is used to populate the "Development sessions" list in your development builds.
-- "settings.json": contains the server configuration that is used to serve the application manifest.
-
-> Should I commit the ".expo" folder?
-
-No, you should not share the ".expo" folder. It does not contain any information that is relevant for other developers working on the project, it is specific to your machine.
-Upon project creation, the ".expo" folder is already added to your ".gitignore" file.
+Add a timeline view for biblical events into the app. I'd love to see what it translates into. Show me the gematria (the number of a name). It would be like a little addition thing: 10 + 300. So if you touch geometry, then you get the + 300, and then it equals and gives you a number that's the gematria of that word and a concordance alphabet.
