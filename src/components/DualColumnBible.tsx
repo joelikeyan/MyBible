@@ -13,7 +13,7 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { SpeakerIcon } from './SpeakerIcon';
-import { BibleVerse } from '../types';
+import { BibleVerse, InterlinearWord } from '../types';
 import { useVoice } from '../context/VoiceContext';
 
 interface DualColumnBibleProps {
@@ -32,9 +32,9 @@ interface LexiconEntry {
   partOfSpeech: string;
 }
 
-export function DualColumnBible({ 
-  verses, 
-  reference, 
+export function DualColumnBible({
+  verses,
+  reference,
   showPerVerseSpeakers = true,
   onWordPress,
   highlights = new Map(),
@@ -45,7 +45,7 @@ export function DualColumnBible({
   const [lexiconEntry, setLexiconEntry] = useState<LexiconEntry | null>(null);
   const [selectedWord, setSelectedWord] = useState<string>('');
   const { textSize } = useVoice();
-  
+
   // Refs for synchronized scrolling
   const originalScrollRef = useRef<ScrollView>(null);
   const englishScrollRef = useRef<ScrollView>(null);
@@ -64,12 +64,12 @@ export function DualColumnBible({
   // Synchronized scrolling handlers
   const handleOriginalScroll = useCallback((event: NativeSyntheticEvent<NativeScrollEvent>) => {
     if (isScrollingEnglish.current) return;
-    
+
     isScrollingOriginal.current = true;
     const offsetY = event.nativeEvent.contentOffset.y;
-    
+
     englishScrollRef.current?.scrollTo({ y: offsetY, animated: false });
-    
+
     // Reset flag after a short delay
     setTimeout(() => {
       isScrollingOriginal.current = false;
@@ -78,48 +78,69 @@ export function DualColumnBible({
 
   const handleEnglishScroll = useCallback((event: NativeSyntheticEvent<NativeScrollEvent>) => {
     if (isScrollingOriginal.current) return;
-    
+
     isScrollingEnglish.current = true;
     const offsetY = event.nativeEvent.contentOffset.y;
-    
+
     originalScrollRef.current?.scrollTo({ y: offsetY, animated: false });
-    
+
     setTimeout(() => {
       isScrollingEnglish.current = false;
     }, 50);
   }, []);
 
   // Handle word tap for lexicon lookup
-  const handleWordPress = async (word: string, verse: BibleVerse) => {
-    setSelectedWord(word);
+  const handleWordClick = async (interlinearWord: InterlinearWord, verse: BibleVerse) => {
+    setSelectedWord(interlinearWord.text);
     setShowLexicon(true);
     setLexiconLoading(true);
-    
+
     // Simulate lexicon lookup (in real app, call API)
     setTimeout(() => {
       setLexiconEntry({
-        word: word,
-        transliteration: verse.transliteration || 'N/A',
-        strongsNumber: verse.strongsNumbers?.[0] || 'N/A',
-        definition: `Definition for "${word}" - This would come from a lexicon API like STEP Bible or Blue Letter Bible.`,
-        partOfSpeech: 'noun/verb/adj',
+        word: interlinearWord.text,
+        transliteration: interlinearWord.transliteration || verse.transliteration || 'N/A',
+        strongsNumber: interlinearWord.strongs || verse.strongsNumbers?.[0] || 'N/A',
+        definition: `Definition for "${interlinearWord.text}" - This would come from a lexicon API like STEP Bible or Blue Letter Bible.`,
+        partOfSpeech: interlinearWord.grammar || 'noun/verb/adj',
       });
       setLexiconLoading(false);
     }, 500);
-    
-    onWordPress?.(word, verse);
+
+    onWordPress?.(interlinearWord.text, verse);
   };
 
   // Render original text with word-level interaction
   const renderOriginalText = (verse: BibleVerse) => {
+    // If we have structured words, use them
+    if (verse.words && verse.words.length > 0) {
+      return (
+        <View style={[styles.originalTextContainer, { direction: verse.language === 'hebrew' ? 'rtl' : 'ltr' }]}>
+          {verse.words.map((word, idx) => (
+            <TouchableOpacity
+              key={idx}
+              onPress={() => handleWordClick(word, verse)}
+              style={styles.wordContainer}
+            >
+              <Text style={[styles.tappableWordText, { fontSize: textSize, fontFamily: 'serif' }]}>
+                {word.text}
+              </Text>
+              {/* Future: Add English Gloss text here for true interlinear */}
+            </TouchableOpacity>
+          ))}
+        </View>
+      );
+    }
+
+    // Fallback to simple split
     const words = verse.originalText.split(' ');
-    
+
     return (
-      <Text style={[styles.originalText, { fontSize: textSize }]}>
+      <Text style={[styles.originalText, { fontSize: textSize, writingDirection: verse.language === 'hebrew' ? 'rtl' : 'ltr' }]}>
         {words.map((word, idx) => (
           <Text
             key={idx}
-            onPress={() => handleWordPress(word, verse)}
+            onPress={() => handleWordClick({ text: word }, verse)}
             style={styles.tappableWord}
           >
             {word}{idx < words.length - 1 ? ' ' : ''}
@@ -151,7 +172,7 @@ export function DualColumnBible({
             <Text style={styles.columnTitle}>Original</Text>
             <SpeakerIcon text={getAllOriginalText()} size={16} />
           </View>
-          <ScrollView 
+          <ScrollView
             ref={originalScrollRef}
             onScroll={handleOriginalScroll}
             scrollEventThrottle={16}
@@ -188,7 +209,7 @@ export function DualColumnBible({
             <Text style={styles.columnTitle}>English</Text>
             <SpeakerIcon text={getAllEnglishText()} size={16} />
           </View>
-          <ScrollView 
+          <ScrollView
             ref={englishScrollRef}
             onScroll={handleEnglishScroll}
             scrollEventThrottle={16}
@@ -226,16 +247,16 @@ export function DualColumnBible({
             <View style={styles.lexiconHeader}>
               <View style={styles.lexiconTitleRow}>
                 <Text style={styles.lexiconTitle}>Word Study</Text>
-                <SpeakerIcon 
-                  text={lexiconEntry ? `${lexiconEntry.word}. ${lexiconEntry.definition}` : ''} 
-                  size={18} 
+                <SpeakerIcon
+                  text={lexiconEntry ? `${lexiconEntry.word}. ${lexiconEntry.definition}` : ''}
+                  size={18}
                 />
               </View>
               <TouchableOpacity onPress={() => setShowLexicon(false)}>
                 <Ionicons name="close" size={24} color="#2D1810" />
               </TouchableOpacity>
             </View>
-            
+
             {lexiconLoading ? (
               <View style={styles.lexiconLoading}>
                 <ActivityIndicator size="large" color="#6B4EFF" />
@@ -247,7 +268,7 @@ export function DualColumnBible({
                   <Text style={styles.lexiconWord}>{lexiconEntry.word}</Text>
                   <Text style={styles.lexiconTranslit}>{lexiconEntry.transliteration}</Text>
                 </View>
-                
+
                 <View style={styles.lexiconMeta}>
                   <View style={styles.metaItem}>
                     <Text style={styles.metaLabel}>Strong's</Text>
@@ -258,7 +279,7 @@ export function DualColumnBible({
                     <Text style={styles.metaValue}>{lexiconEntry.partOfSpeech}</Text>
                   </View>
                 </View>
-                
+
                 <View style={styles.definitionBox}>
                   <Text style={styles.definitionLabel}>Definition</Text>
                   <Text style={styles.definitionText}>{lexiconEntry.definition}</Text>
@@ -338,6 +359,19 @@ const styles = StyleSheet.create({
     color: '#2D1810',
     fontFamily: 'serif',
     lineHeight: 24,
+  },
+  originalTextContainer: {
+    flex: 1,
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    alignItems: 'flex-start',
+  },
+  wordContainer: {
+    marginHorizontal: 2,
+    marginBottom: 4,
+  },
+  tappableWordText: {
+    color: '#2D1810',
   },
   englishText: {
     flex: 1,

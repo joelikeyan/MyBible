@@ -1,4 +1,4 @@
-import { BibleVerse } from '../types';
+import { BibleVerse, InterlinearWord } from '../types';
 import { config } from '../config';
 
 // Bible version IDs for API.Bible
@@ -60,7 +60,7 @@ export async function fetchFromGetBible(
   bookNumber: string,
   chapter: number
 ): Promise<any> {
-  const cacheKey = `getbible-${translation}-${bookNumber}-${chapter}`;
+  // const cacheKey = `getbible-${translation}-${bookNumber}-${chapter}`; // Unused
 
   try {
     const response = await fetch(
@@ -165,6 +165,33 @@ export async function fetchInterlinear(
 }
 
 /**
+ * Parse original text into interlinear words
+ * This acts as a client-side tokenizer since we don't have a word-level API
+ */
+function parseOriginalText(text: string, language: 'hebrew' | 'greek' | 'aramaic'): InterlinearWord[] {
+  if (!text) return [];
+
+  // Remove cantillation marks/vowels for cleaner tokenization if needed,
+  // but usually we want to keep them for display.
+  // We split by space.
+  const words = text.split(' ');
+
+  return words.map(word => {
+    // Basic cleanup to remove punctuation attached to words
+    const cleanWord = word.replace(/[.,;:]/g, '');
+
+    return {
+      text: word,
+      // Mock Strong's number for now based on simple hash or placeholder
+      // In a real app with local DB, we would look this up.
+      strongs: 'H0000',
+      transliteration: '', // Would need a transliteration library
+      englishGloss: '', // Would need a dictionary
+    };
+  });
+}
+
+/**
  * Main function to fetch Bible passage with both English and original language
  */
 export async function fetchBiblePassage(
@@ -193,14 +220,20 @@ export async function fetchBiblePassage(
       return getFallbackVerses(bookName, chapter, isOT);
     }
 
-    const verses: BibleVerse[] = kjvData.verses.map((v: any, index: number) => ({
-      number: v.verse || index + 1,
-      englishText: cleanText(v.text),
-      originalText: originalData?.[index]?.text || getPlaceholderOriginal(bookName, chapter, v.verse, isOT),
-      transliteration: originalData?.[index]?.transliteration || '',
-      strongsNumbers: originalData?.[index]?.strongs || [],
-      language: isOT ? 'hebrew' : 'greek',
-    }));
+    const verses: BibleVerse[] = kjvData.verses.map((v: any, index: number) => {
+      const originalText = originalData?.[index]?.text || getPlaceholderOriginal(bookName, chapter, v.verse, isOT);
+      const language = isOT ? 'hebrew' : 'greek';
+
+      return {
+        number: v.verse || index + 1,
+        englishText: cleanText(v.text),
+        originalText: originalText,
+        transliteration: originalData?.[index]?.transliteration || '',
+        strongsNumbers: originalData?.[index]?.strongs || [],
+        language: language as 'hebrew' | 'greek',
+        words: parseOriginalText(originalText, language as 'hebrew' | 'greek'),
+      };
+    });
 
     cache.set(cacheKey, verses);
     return verses;

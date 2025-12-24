@@ -46,6 +46,15 @@ export interface Conversation {
   unread?: number;
 }
 
+export interface InterlinearWord {
+  text: string;
+  transliteration?: string;
+  strongs?: string;
+  grammar?: string;
+  definition?: string;
+  englishGloss?: string; // The translated word corresponding to this original word
+}
+
 export interface BibleVerse {
   number: number;
   originalText: string;
@@ -53,6 +62,7 @@ export interface BibleVerse {
   language: 'hebrew' | 'greek' | 'aramaic';
   transliteration?: string;
   strongsNumbers?: string[];
+  words?: InterlinearWord[];
 }
 
 export interface BibleChapter {
@@ -61,4 +71,3 @@ export interface BibleChapter {
   verses: BibleVerse[];
   language: 'hebrew' | 'greek' | 'aramaic';
 }
-
