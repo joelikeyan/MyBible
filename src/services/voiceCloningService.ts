@@ -150,6 +150,7 @@ class VoiceCloningService {
       const metadata = getAudioMetadata(audioUri);
       const formData = new FormData();
       formData.append('name', normalizedName);
+      formData.append('consent', 'true');
       formData.append('files', { uri: audioUri, ...metadata } as unknown as Blob);
       onProgress?.(30);
 

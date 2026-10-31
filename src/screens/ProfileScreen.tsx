@@ -8,6 +8,7 @@ import {
   Switch,
   Modal,
   ActivityIndicator,
+  Alert,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { SpeakerIcon } from '../components/SpeakerIcon';
@@ -34,6 +35,8 @@ export function ProfileScreen() {
   const [recordingDuration, setRecordingDuration] = useState(0);
   const [recordedUri, setRecordedUri] = useState<string | null>(null);
   const [isProcessing, setIsProcessing] = useState(false);
+  const [isUploading, setIsUploading] = useState(false);
+  const [hasVoiceConsent, setHasVoiceConsent] = useState(false);
 
   const narrators = voices.filter(v => v.type === 'narrator');
   const clonedVoices = voices.filter(v => v.type === 'clone');
@@ -58,8 +61,29 @@ export function ProfileScreen() {
     }
   };
 
+  const handleOpenRecordModal = () => {
+    setRecordedUri(null);
+    setRecordingDuration(0);
+    setHasVoiceConsent(false);
+    setShowRecordModal(true);
+  };
+
+  const handleCloseRecordModal = async () => {
+    if (isRecording) {
+      await voiceCloningService.cancelRecording();
+    }
+    setIsRecording(false);
+    setRecordedUri(null);
+    setRecordingDuration(0);
+    setHasVoiceConsent(false);
+    setShowRecordModal(false);
+  };
+
   const handleCreateVoice = async () => {
-    if (!recordedUri) return;
+    if (!recordedUri || !hasVoiceConsent) {
+      Alert.alert('Voice consent required', 'Confirm that this is your voice and you authorize its use.');
+      return;
+    }
 
     setIsProcessing(true);
     const result = await voiceCloningService.createVoiceClone(
@@ -71,10 +95,46 @@ export function ProfileScreen() {
       await refreshVoices();
       setShowRecordModal(false);
       setRecordedUri(null);
+      setHasVoiceConsent(false);
     } else {
       alert('Failed to create voice clone: ' + result.error);
     }
     setIsProcessing(false);
+  };
+
+  const confirmVoiceRights = (): Promise<boolean> => {
+    return new Promise(resolve => {
+      Alert.alert(
+        'Confirm voice rights',
+        'Only upload your own voice, or a voice you have explicit authorization to clone and use.',
+        [
+          { text: 'Cancel', style: 'cancel', onPress: () => resolve(false) },
+          { text: 'I Confirm', onPress: () => resolve(true) },
+        ],
+        { cancelable: true, onDismiss: () => resolve(false) }
+      );
+    });
+  };
+
+  const handleUploadVoice = async () => {
+    if (!(await confirmVoiceRights())) {
+      return;
+    }
+
+    const sample = await voiceCloningService.pickAudioFile();
+    if (!sample) {
+      return;
+    }
+
+    setIsUploading(true);
+    const name = sample.name.replace(/\.[^.]+$/, '').trim() || `My Voice ${new Date().toLocaleDateString()}`;
+    const result = await voiceCloningService.createVoiceClone(sample.uri, name);
+    if (result.success) {
+      await refreshVoices(result.voiceId);
+    } else {
+      Alert.alert('Voice clone failed', result.error ?? 'The voice provider rejected the sample.');
+    }
+    setIsUploading(false);
   };
 
   return (
@@ -170,15 +230,25 @@ export function ProfileScreen() {
           <View style={styles.voiceActions}>
             <TouchableOpacity
               style={styles.actionButton}
-              onPress={() => setShowRecordModal(true)}
+              onPress={handleOpenRecordModal}
             >
               <Ionicons name="mic" size={20} color="#6B4EFF" />
               <Text style={styles.actionButtonText}>Record Voice Sample</Text>
             </TouchableOpacity>
 
-            <TouchableOpacity style={styles.actionButton}>
-              <Ionicons name="cloud-upload" size={20} color="#6B4EFF" />
-              <Text style={styles.actionButtonText}>Upload Voice Sample</Text>
+            <TouchableOpacity
+              style={styles.actionButton}
+              onPress={handleUploadVoice}
+              disabled={isUploading}
+            >
+              {isUploading ? (
+                <ActivityIndicator color="#6B4EFF" />
+              ) : (
+                <>
+                  <Ionicons name="cloud-upload" size={20} color="#6B4EFF" />
+                  <Text style={styles.actionButtonText}>Upload Voice Sample</Text>
+                </>
+              )}
             </TouchableOpacity>
           </View>
 
@@ -298,12 +368,17 @@ export function ProfileScreen() {
       <View style={styles.bottomPadding} />
 
       {/* Record Voice Modal */}
-      <Modal visible={showRecordModal} animationType="slide" transparent>
+      <Modal
+        visible={showRecordModal}
+        animationType="slide"
+        transparent
+        onRequestClose={() => void handleCloseRecordModal()}
+      >
         <View style={styles.modalOverlay}>
           <View style={styles.modalContent}>
             <View style={styles.modalHeader}>
               <Text style={styles.modalTitle}>Record Voice Sample</Text>
-              <TouchableOpacity onPress={() => setShowRecordModal(false)}>
+              <TouchableOpacity onPress={() => void handleCloseRecordModal()}>
                 <Ionicons name="close" size={24} color="#2D1810" />
               </TouchableOpacity>
             </View>
@@ -376,6 +451,18 @@ export function ProfileScreen() {
                   </TouchableOpacity>
                 </View>
               )}
+            </View>
+
+            <View style={styles.consentRow}>
+              <Switch
+                value={hasVoiceConsent}
+                onValueChange={setHasVoiceConsent}
+                trackColor={{ false: '#D7CCC4', true: '#9C8CFF' }}
+                thumbColor={hasVoiceConsent ? '#6B4EFF' : '#F5F0EA'}
+              />
+              <Text style={styles.consentText}>
+                This is my voice, and I authorize MyBible and ElevenLabs to create and use this clone for read-aloud playback.
+              </Text>
             </View>
 
             {isRecording && (
@@ -653,6 +740,18 @@ const styles = StyleSheet.create({
   recordControls: {
     alignItems: 'center',
     marginBottom: 20,
+  },
+  consentRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 12,
+    marginBottom: 20,
+  },
+  consentText: {
+    flex: 1,
+    color: '#5C4A3D',
+    fontSize: 13,
+    lineHeight: 19,
   },
   recordButton: {
     width: 80,

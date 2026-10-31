@@ -60,6 +60,23 @@ export async function requestJson<T>(
   path: string,
   options: JsonRequestOptions = {}
 ): Promise<T> {
+  return requestWithBody(path, options, async response => parseResponseBody(response) as Promise<T>);
+}
+
+export async function requestBytes(
+  path: string,
+  options: JsonRequestOptions = {}
+): Promise<Uint8Array> {
+  return requestWithBody(path, options, async response => {
+    return new Uint8Array(await response.arrayBuffer());
+  });
+}
+
+async function requestWithBody<T>(
+  path: string,
+  options: JsonRequestOptions,
+  readSuccessBody: (response: Response) => Promise<T>
+): Promise<T> {
   const controller = new AbortController();
   const timeoutMs = options.timeoutMs ?? config.services.requestTimeoutMs;
   const timeout = setTimeout(() => controller.abort(), timeoutMs);
@@ -76,17 +93,15 @@ export async function requestJson<T>(
       headers,
       signal: controller.signal,
     });
-    const payload = await parseResponseBody(response);
-
     if (!response.ok) {
+      const payload = await parseResponseBody(response);
       throw new HttpError(
         getErrorMessage(payload, `Request failed with status ${response.status}.`),
         response.status,
         payload
       );
     }
-
-    return payload as T;
+    return readSuccessBody(response);
   } catch (error) {
     if (error instanceof Error && error.name === 'AbortError') {
       throw new Error(`Request timed out after ${timeoutMs} ms.`);
