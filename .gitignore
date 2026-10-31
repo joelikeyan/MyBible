@@ -6,6 +6,7 @@ node_modules/
 # Expo
 .expo/
 dist/
+/dist-test/
 web-build/
 expo-env.d.ts
 
@@ -31,7 +32,8 @@ yarn-error.*
 *.pem
 
 # local env files
-.env*.local
+.env*
+!.env.example
 
 # typescript
 *.tsbuildinfo
@@ -39,4 +41,22 @@ yarn-error.*
 # generated native folders
 /ios
 /android
+
+# generated output
+/devices.json
+/expo_output.log
+/web/cache/
+/ProjectContext_For_AI.*
+
+# accidentally exported Git internals
+/COMMIT_EDITMSG
+/HEAD
+/config
+/description
+/index
+/info/
+/logs/
+/objects/
+/refs/
+/src/hooks/
 .env

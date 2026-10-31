@@ -24,6 +24,7 @@ export function AIStudyModal({ onClose, book, chapter }: AIStudyModalProps) {
   const [activeTab, setActiveTab] = useState<'guide' | 'chat'>('guide');
   const [studyGuide, setStudyGuide] = useState<StudyGuide | null>(null);
   const [loading, setLoading] = useState(false);
+  const [guideError, setGuideError] = useState<string | null>(null);
 
   // Chat state
   const [chatMessages, setChatMessages] = useState<{role: 'user' | 'ai', text: string}[]>([]);
@@ -38,13 +39,15 @@ export function AIStudyModal({ onClose, book, chapter }: AIStudyModalProps) {
 
   const loadStudyGuide = async () => {
     setLoading(true);
+    setGuideError(null);
     try {
       const guide = await aiService.generateStudyGuide(book, chapter);
       setStudyGuide(guide);
     } catch (error) {
-      console.error('Failed to generate study guide', error);
+      setGuideError(error instanceof Error ? error.message : 'Study guide generation failed.');
+    } finally {
+      setLoading(false);
     }
-    setLoading(false);
   };
 
   const handleSendMessage = async () => {
@@ -59,9 +62,11 @@ export function AIStudyModal({ onClose, book, chapter }: AIStudyModalProps) {
       const response = await aiService.askQuestion(userMsg, `${book} ${chapter}`);
       setChatMessages(prev => [...prev, { role: 'ai', text: response.text }]);
     } catch (error) {
-      setChatMessages(prev => [...prev, { role: 'ai', text: "I'm sorry, I'm having trouble connecting right now." }]);
+      const message = error instanceof Error ? error.message : 'The AI request failed.';
+      setChatMessages(prev => [...prev, { role: 'ai', text: message }]);
+    } finally {
+      setIsTyping(false);
     }
-    setIsTyping(false);
   };
 
   return (
@@ -140,7 +145,12 @@ export function AIStudyModal({ onClose, book, chapter }: AIStudyModalProps) {
               </View>
             </ScrollView>
           ) : (
-            <Text style={styles.errorText}>Failed to load study guide.</Text>
+            <View style={styles.errorContainer}>
+              <Text style={styles.errorText}>{guideError ?? 'Study guide generation failed.'}</Text>
+              <TouchableOpacity style={styles.retryButton} onPress={loadStudyGuide}>
+                <Text style={styles.retryButtonText}>Retry</Text>
+              </TouchableOpacity>
+            </View>
           )
         ) : (
           <KeyboardAvoidingView
@@ -268,8 +278,22 @@ const styles = StyleSheet.create({
   },
   errorText: {
     textAlign: 'center',
-    marginTop: 40,
     color: '#E57373',
+  },
+  errorContainer: {
+    alignItems: 'center',
+    padding: 40,
+  },
+  retryButton: {
+    marginTop: 16,
+    backgroundColor: '#6B4EFF',
+    borderRadius: 8,
+    paddingHorizontal: 20,
+    paddingVertical: 10,
+  },
+  retryButtonText: {
+    color: '#FFFFFF',
+    fontWeight: '600',
   },
   guideContainer: {
     padding: 20,
