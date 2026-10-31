@@ -23,6 +23,8 @@ export function SpeakerIcon({ text, size = 20, color = '#6B4EFF', style }: Speak
       setIsSpeaking(true);
       try {
         await voiceService.speak(text, selectedVoice);
+      } catch (error) {
+        console.error('Read-aloud playback failed', error);
       } finally {
         setIsSpeaking(false);
       }

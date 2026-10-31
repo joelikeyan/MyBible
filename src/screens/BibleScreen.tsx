@@ -60,12 +60,11 @@ export function BibleScreen() {
         setVerses([]);
       }
     } catch (err) {
-      console.error('Error loading verses:', err);
-      setError('Failed to load verses. Check your internet connection.');
+      setError(err instanceof Error ? err.message : 'Failed to load this chapter.');
       setVerses([]);
+    } finally {
+      setLoading(false);
     }
-
-    setLoading(false);
   }, [selectedBook, selectedChapter]);
 
   const loadHighlights = useCallback(async () => {

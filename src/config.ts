@@ -1,32 +1,41 @@
-// Configuration for external services
+const DEFAULT_REQUEST_TIMEOUT_MS = 15_000;
+
+export class ServiceConfigurationError extends Error {
+  constructor(feature: string) {
+    super(`${feature} requires EXPO_PUBLIC_MYBIBLE_API_URL to point to the MyBible API.`);
+    this.name = 'ServiceConfigurationError';
+  }
+}
+
+export function normalizeBaseUrl(value: string | undefined): string | null {
+  const trimmed = value?.trim();
+
+  if (!trimmed) {
+    return null;
+  }
+
+  try {
+    const url = new URL(trimmed);
+    if (url.protocol !== 'http:' && url.protocol !== 'https:') {
+      return null;
+    }
+    return url.toString().replace(/\/$/, '');
+  } catch {
+    return null;
+  }
+}
 
 export const config = {
-  // OpenAI API (for AI Study Assistant)
-  // Key provided by user
-  openai: {
-    apiKey: 'proj_XAyHRpRjtv5Fs5yT3Xy7XUM4',
-    model: 'gpt-4o-mini',
+  services: {
+    apiBaseUrl: normalizeBaseUrl(process.env.EXPO_PUBLIC_MYBIBLE_API_URL),
+    requestTimeoutMs: DEFAULT_REQUEST_TIMEOUT_MS,
   },
+} as const;
 
-  // Google AI (Gemini)
-  // Key provided by user
-  googleAI: {
-    apiKey: 'AIzaSyC0yJi6Cck2IIkTfLRFY7SfnIMDDaC0f88',
-    model: 'gemini-1.5-flash', // Using a fast, capable model
-  },
+export function requireApiBaseUrl(feature: string): string {
+  if (!config.services.apiBaseUrl) {
+    throw new ServiceConfigurationError(feature);
+  }
 
-  // ElevenLabs API (for Voice Cloning)
-  // Key provided by user
-  elevenLabs: {
-    apiKey: 'sk_e123db856381a534c5a3afc1d135d85263ef8675339c87ca',
-    voiceCloneUrl: 'https://api.elevenlabs.io/v1/voices/add',
-    ttsUrl: 'https://api.elevenlabs.io/v1/text-to-speech',
-  },
-
-  // API.Bible (for additional translations)
-  // Key provided by user
-  apiBible: {
-    apiKey: 'pbnN3b_VRiDqCFuc5vfiF',
-    baseUrl: 'https://api.scripture.bible/v1',
-  },
-};
+  return config.services.apiBaseUrl;
+}
